@@ -1,6 +1,6 @@
 services:
 
-  postgres:
+  skyacs-postgres:
     image: postgres:17-alpine
     restart: unless-stopped
 
@@ -42,7 +42,7 @@ services:
       CWMP_BIND_ADDR: 0.0.0.0
       API_BIND_ADDR: 0.0.0.0
 
-      DB_HOST: postgres
+      DB_HOST: skyacs-postgres
       DB_PORT: "5432"
       DB_NAME: skyacs
       DB_USER: skyacs
@@ -84,7 +84,7 @@ services:
       - "7548"
 
     depends_on:
-      postgres:
+      skyacs-postgres:
         condition: service_healthy
 
     networks:
