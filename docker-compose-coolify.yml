@@ -1,0 +1,128 @@
+services:
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: skyacs
+      POSTGRES_USER: skyacs
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - skyacs-postgres:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U skyacs -d skyacs
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+    networks:
+      - backend
+
+
+  skyacs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: backend
+
+    restart: unless-stopped
+
+    environment:
+      TZ: Europe/Bratislava
+
+      PORT: "7547"
+      API_PORT: "7548"
+
+      CWMP_BIND_ADDR: 0.0.0.0
+      API_BIND_ADDR: 0.0.0.0
+
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: skyacs
+      DB_USER: skyacs
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      # PostgreSQL runs inside the private Docker network.
+      DB_SSLMODE: disable
+
+      DB_MAX_OPEN_CONNS: "50"
+      DB_MAX_IDLE_CONNS: "10"
+
+      JWT_SECRET: ${JWT_SECRET}
+      PARAMETER_ENCRYPTION_KEY: ${PARAMETER_ENCRYPTION_KEY}
+
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+
+      CORS_ALLOWED_ORIGINS: ${SKYACS_PUBLIC_URL}
+
+      # The SKYACS backend is reachable only through the internal
+      # nginx container. Docker bridge networks normally use this range.
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
+      CWMP_TRUSTED_PROXY_CIDRS: ${CWMP_TRUSTED_PROXY_CIDRS:-172.16.0.0/12}
+
+      CWMP_USERNAME: ${CWMP_USERNAME:-}
+      CWMP_PASSWORD: ${CWMP_PASSWORD:-}
+
+      CWMP_ALLOWED_CIDRS: ${CWMP_ALLOWED_CIDRS:-}
+
+      CONNECTION_REQUEST_ALLOWED_CIDRS: ${CONNECTION_REQUEST_ALLOWED_CIDRS:-}
+
+      FIRMWARE_UPLOAD_DIR: /var/lib/skyacs/firmware
+      ALLOW_INSECURE_FIRMWARE_URL: "false"
+
+    volumes:
+      - skyacs-firmware:/var/lib/skyacs/firmware
+
+    expose:
+      - "7547"
+      - "7548"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    networks:
+      - backend
+
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+
+    restart: unless-stopped
+
+    expose:
+      - "8080"
+      - "7547"
+
+    depends_on:
+      skyacs:
+        condition: service_healthy
+
+    networks:
+      - backend
+      - coolify
+
+
+volumes:
+
+  skyacs-postgres:
+
+  skyacs-firmware:
+
+
+networks:
+
+  backend:
+    driver: bridge
+
+  coolify:
+    external: true
