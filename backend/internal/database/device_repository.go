@@ -120,6 +120,11 @@ func (r *DeviceRepository) ListForAnalytics(ctx context.Context, maxDevices int)
 	return devices, int(total), err
 }
 
+func (r *DeviceRepository) SetTags(ctx context.Context, deviceID int64, tags []string) error {
+	device := &models.Device{ID: deviceID, Tags: tags}
+	return r.db.WithContext(ctx).Model(device).Select("tags").Updates(device).Error
+}
+
 func (r *DeviceRepository) SetOffline(ctx context.Context, serialNumber string) error {
 	return r.db.WithContext(ctx).Model(&models.Device{}).
 		Where("serial_number = ?", serialNumber).

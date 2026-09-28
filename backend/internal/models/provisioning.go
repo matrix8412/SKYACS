@@ -10,6 +10,7 @@ type ProvisioningRule struct {
 	Phase          string    `json:"phase" gorm:"size:16;default:'bootstrap'"`
 	Manufacturer   string    `json:"manufacturer,omitempty" gorm:"size:128"`
 	ProductClass   string    `json:"product_class,omitempty" gorm:"size:128"`
+	Tag            string    `json:"tag,omitempty" gorm:"column:tag;size:128;not null;default:''"`
 	Enabled        bool      `json:"enabled" gorm:"default:true"`
 	Version        uint64    `json:"version" gorm:"not null;default:1"`
 	Description    string    `json:"description,omitempty"`
@@ -28,6 +29,7 @@ type CreateProvisioningRuleRequest struct {
 	Phase          string `json:"phase"`
 	Manufacturer   string `json:"manufacturer"`
 	ProductClass   string `json:"product_class"`
+	Tag            string `json:"tag"`
 	Enabled        bool   `json:"enabled"`
 	Description    string `json:"description"`
 }

@@ -11,6 +11,7 @@ export interface Device {
   software_version: string | null;
   ip_address: string | null;
   connection_request_url: string | null;
+  tags: string[] | null;
   last_inform: string | null;
   online: boolean;
   created_at: string;
@@ -25,7 +26,7 @@ export interface Task { id: number; device_id: number; type: string; payload: un
 export interface Firmware { id: number; filename: string; version: string; manufacturer?: string; product_class?: string; file_size: number; checksum?: string; description?: string; created_at: string; updated_at: string }
 export interface Fault { id: number; device_id: number; serial_number: string; fault_code: string; fault_string: string; parameter_name: string; resolved: boolean; created_at: string; resolved_at: string | null }
 export interface User { id: number; username: string; role: 'full' | 'read'; created_at: string; last_login: string | null }
-export interface ProvisioningRule { id: number; parameter_name: string; parameter_value: string; parameter_type: string; phase: string; manufacturer: string; product_class: string; enabled: boolean; description: string }
+export interface ProvisioningRule { id: number; parameter_name: string; parameter_value: string; parameter_type: string; phase: string; manufacturer: string; product_class: string; tag: string; enabled: boolean; description: string }
 export interface AuditLog { id: number; user_id?: number; username: string; action: string; resource: string; status: number; ip_address: string; user_agent?: string; created_at: string }
 export interface BlockedDevice { id: number; serial_number: string; reason: string; created_by: string; created_at: string }
 
@@ -59,6 +60,7 @@ export const api = {
   health: () => request<{ status: string }>('/health'),
   getDevices: (limit = 50, offset = 0) => request<DeviceListResponse>(`/devices?limit=${limit}&offset=${offset}`),
   getDevice: (serial: string) => request<Device>(`/device/${encodeURIComponent(serial)}`),
+  setDeviceTags: (serial: string, tags: string[]) => request<{ status: string; tags: string[] }>(`/device/${encodeURIComponent(serial)}/tags`, { method: 'PUT', body: JSON.stringify({ tags }) }),
   getDeviceStats: () => request<DeviceStats>('/devices/stats'),
   getDeviceAnalytics: () => request<{ rxPower: Record<string, number>; temperature: Record<string, number>; uptime: Record<string, number>; accessType: Record<string, number>; lastInform: Record<string, number>; wifiStations: Record<string, number>; manufacturers: Record<string, number>; productClasses: Record<string, number>; sampled: number; total: number }>('/devices/analytics'),
   getDeviceParameters: (serial: string) => request<DeviceParameter[]>(`/device/${encodeURIComponent(serial)}/parameters`),

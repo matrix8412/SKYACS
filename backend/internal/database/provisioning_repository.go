@@ -52,6 +52,7 @@ func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, devic
 		Where("phase = ?", phase).
 		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
 		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
+		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
 		Where("NOT EXISTS (SELECT 1 FROM provisioning_applications pa WHERE pa.rule_id = provisioning_rules.id AND pa.rule_version = provisioning_rules.version AND pa.device_id = ?)", deviceID).
 		Order("id").Find(&rules).Error; err != nil {
 		return nil, err
@@ -83,7 +84,7 @@ func (r *ProvisioningRepository) Update(ctx context.Context, rule *models.Provis
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return tx.Model(&models.ProvisioningRule{}).Where("id = ?", rule.ID).Updates(map[string]interface{}{
 			"parameter_name": rule.ParameterName, "parameter_value": value, "parameter_type": rule.ParameterType,
-			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "enabled": rule.Enabled, "description": rule.Description,
+			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "tag": rule.Tag, "enabled": rule.Enabled, "description": rule.Description,
 			"version": gorm.Expr("version + 1"),
 		}).Error
 	})

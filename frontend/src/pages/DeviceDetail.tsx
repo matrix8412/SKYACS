@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
-import { createResource, createSignal, Show, For, createEffect, onMount, onCleanup } from 'solid-js';
+import { createResource, createSignal, Show, For, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
 import { useParams, A, useNavigate } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck } from 'lucide-solid';
+import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags } from 'lucide-solid';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
@@ -33,6 +33,35 @@ const DeviceDetail: Component = () => {
   const [modemCredsEdits, setModemCredsEdits] = createSignal<Record<string, string>>({});
   const [showFactoryResetModal, setShowFactoryResetModal] = createSignal(false);
   const [factoryResetPassword, setFactoryResetPassword] = createSignal('');
+  const [newTag, setNewTag] = createSignal('');
+  const [tagsLoading, setTagsLoading] = createSignal(false);
+
+  const deviceTags = createMemo(() => device()?.tags || []);
+
+  const handleAddTag = async () => {
+    const tag = newTag().trim().toLowerCase();
+    if (!tag || tagsLoading()) return;
+    if (deviceTags().includes(tag)) { setNewTag(''); return; }
+    setTagsLoading(true);
+    try {
+      await api.setDeviceTags(serial(), [...deviceTags(), tag]);
+      setNewTag('');
+      refetchDevice();
+    } catch (err) {
+      showMessage('error', 'Tag was not added.', (err as Error).message);
+    } finally { setTagsLoading(false); }
+  };
+
+  const handleRemoveTag = async (tag: string) => {
+    if (tagsLoading()) return;
+    setTagsLoading(true);
+    try {
+      await api.setDeviceTags(serial(), deviceTags().filter(t => t !== tag));
+      refetchDevice();
+    } catch (err) {
+      showMessage('error', 'Tag was not removed.', (err as Error).message);
+    } finally { setTagsLoading(false); }
+  };
   let messageTimeout: number | undefined;
   const closeFactoryResetModal = () => {
     setShowFactoryResetModal(false);
@@ -771,6 +800,47 @@ const DeviceDetail: Component = () => {
                   <div><span class="text-muted">HW Version:</span> <span class="text-primary">{d().hardware_version || '-'}</span></div>
                   <div><span class="text-muted">SW Version:</span> <span class="text-primary">{d().software_version || '-'}</span></div>
                   <div><span class="text-muted">IP Address:</span> <span class="text-primary font-mono">{d().ip_address || getParamValue(['ExternalIPAddress', 'IPAddress']) || '-'}</span></div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-subtle">
+                  <div class="flex items-center gap-1.5 mb-2">
+                    <Tags size={13} class="text-muted" />
+                    <span class="text-xs font-medium text-secondary">Tags</span>
+                  </div>
+                  <div class="flex flex-wrap gap-1.5 mb-2">
+                    <For each={deviceTags()}>
+                      {(tag) => (
+                        <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400">
+                          {tag}
+                          <Show when={isFullAccess()}>
+                            <button onClick={() => handleRemoveTag(tag)} disabled={tagsLoading()} class="hover:text-rose-400 disabled:opacity-50" aria-label={`Remove tag ${tag}`}>
+                              <X size={12} />
+                            </button>
+                          </Show>
+                        </span>
+                      )}
+                    </For>
+                    <Show when={deviceTags().length === 0}>
+                      <span class="text-xs text-muted">No tags — provisioning rules with a tag scope will not apply to this CPE.</span>
+                    </Show>
+                  </div>
+                  <Show when={isFullAccess()}>
+                    <div class="flex gap-2">
+                      <input
+                        type="text"
+                        value={newTag()}
+                        onInput={(e) => setNewTag(e.currentTarget.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleAddTag(); } }}
+                        class="input flex-1 py-1 text-xs"
+                        placeholder="Add tag (e.g. branch-a)"
+                        disabled={tagsLoading()}
+                      />
+                      <button onClick={() => void handleAddTag()} disabled={tagsLoading() || !newTag().trim()} class="btn btn-secondary text-xs py-1">
+                        <Plus size={12} />
+                        Add
+                      </button>
+                    </div>
+                  </Show>
                 </div>
               </div>
 

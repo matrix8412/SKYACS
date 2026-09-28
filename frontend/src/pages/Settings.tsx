@@ -21,8 +21,9 @@ const defaultProvColumns: ProvColumnConfig[] = [
   { id: 'value', label: 'Value', visible: true, order: 1 },
   { id: 'manufacturer', label: 'Manufacturer scope', visible: true, order: 2 },
   { id: 'product_class', label: 'Product class scope', visible: true, order: 3 },
-  { id: 'phase', label: 'Phase', visible: true, order: 4 },
-  { id: 'status', label: 'Status', visible: true, order: 5 },
+  { id: 'tag', label: 'Tag scope', visible: true, order: 4 },
+  { id: 'phase', label: 'Phase', visible: true, order: 5 },
+  { id: 'status', label: 'Status', visible: true, order: 6 },
 ];
 
 const PROV_STORAGE_KEY = 'skyacs_prov_columns';
@@ -69,7 +70,7 @@ const Settings: Component = () => {
 
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
-  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', enabled: true, description: '' };
+  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
 
   // Provisioning column visibility
@@ -288,7 +289,7 @@ const Settings: Component = () => {
 
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
-    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', enabled: p.enabled, description: p.description });
+    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description });
     setShowProvModal(true);
   };
 
@@ -492,6 +493,9 @@ const Settings: Component = () => {
                       </Show>
                       <Show when={visibleProvColumns().some(c => c.id === 'product_class')}>
                         <td class="py-2 text-secondary text-xs">{p.product_class || '—'}</td>
+                      </Show>
+                      <Show when={visibleProvColumns().some(c => c.id === 'tag')}>
+                        <td class="py-2 text-secondary text-xs">{p.tag ? <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400">{p.tag}</span> : '—'}</td>
                       </Show>
                       <Show when={visibleProvColumns().some(c => c.id === 'phase')}>
                         <td class="py-2">
@@ -834,6 +838,18 @@ const Settings: Component = () => {
                     placeholder="HG8145V5"
                   />
                 </div>
+              </div>
+              <div>
+                <label for="provisioning-tag" class="block text-xs text-muted mb-1.5">Tag scope</label>
+                <input
+                  id="provisioning-tag"
+                  type="text"
+                  value={provForm().tag}
+                  onInput={(e) => setProvForm(f => ({ ...f, tag: e.currentTarget.value }))}
+                  class="input w-full"
+                  placeholder="branch-a (leave empty to apply to all CPEs)"
+                />
+                <p class="text-xs text-muted mt-1">Applies the rule only to CPEs that carry this tag. Leave empty to apply to all matching CPEs.</p>
               </div>
               <div>
                 <label for="provisioning-type" class="block text-xs text-muted mb-1.5">CWMP value type</label>

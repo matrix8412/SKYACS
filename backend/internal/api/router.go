@@ -128,6 +128,7 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("DELETE /device/{serial}", auth.RequireFullAccess(r.handleDeleteDeviceBySerial))
 	apiMux.HandleFunc("GET /device/{serial}/parameters", r.handleGetDeviceParametersBySerial)
 	apiMux.HandleFunc("GET /device/{serial}/tasks", r.handleGetDeviceTasksBySerial)
+	apiMux.HandleFunc("PUT /device/{serial}/tags", auth.RequireFullAccess(r.handleSetDeviceTagsBySerial))
 	apiMux.HandleFunc("POST /device/{serial}/get-parameters", auth.RequireFullAccess(r.handleGetParameterValuesBySerial))
 	apiMux.HandleFunc("POST /device/{serial}/set-parameters", auth.RequireFullAccess(r.handleSetParameterValuesBySerial))
 	apiMux.HandleFunc("POST /device/{serial}/reboot", auth.RequireFullAccess(r.handleRebootBySerial))
@@ -1330,6 +1331,61 @@ func (r *Router) handleGetDeviceTasksBySerial(w http.ResponseWriter, req *http.R
 	respondJSON(w, http.StatusOK, tasks)
 }
 
+func (r *Router) handleSetDeviceTagsBySerial(w http.ResponseWriter, req *http.Request) {
+	device, err := r.parseDeviceBySerial(req)
+	if err != nil || device == nil {
+		respondError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+
+	var body struct {
+		Tags []string `json:"tags"`
+	}
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	tags := normalizeTags(body.Tags)
+	if len(tags) > 32 {
+		respondError(w, http.StatusBadRequest, "A device can have at most 32 tags")
+		return
+	}
+	for _, tag := range tags {
+		if len(tag) > 64 {
+			respondError(w, http.StatusBadRequest, "A tag must be 64 characters or fewer")
+			return
+		}
+	}
+
+	if err := r.deviceRepo.SetTags(req.Context(), device.ID, tags); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update tags")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"status": "updated", "tags": tags})
+}
+
+// normalizeTags trims, lowercases, de-duplicates and drops empty tags so that
+// tag matching is case-insensitive and stable.
+func normalizeTags(tags []string) []string {
+	seen := make(map[string]struct{}, len(tags))
+	result := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		result = append(result, tag)
+	}
+	return result
+}
+
 func (r *Router) handleGetParameterValuesBySerial(w http.ResponseWriter, req *http.Request) {
 	device, err := r.parseDeviceBySerial(req)
 	if err != nil || device == nil {
@@ -1964,7 +2020,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -1983,6 +2039,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		Phase:          body.Phase,
 		Manufacturer:   strings.TrimSpace(body.Manufacturer),
 		ProductClass:   strings.TrimSpace(body.ProductClass),
+		Tag:            strings.ToLower(strings.TrimSpace(body.Tag)),
 		Enabled:        body.Enabled,
 		Description:    body.Description,
 	}
@@ -2016,12 +2073,13 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	body.ID = id
+	body.Tag = strings.ToLower(strings.TrimSpace(body.Tag))
 	if err := r.provisioningRepo.Update(req.Context(), &body); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to update rule")
 		return
@@ -2030,7 +2088,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 	respondJSON(w, http.StatusOK, body)
 }
 
-func validateProvisioningRule(name, value, valueType, phase, manufacturer, productClass, description string) error {
+func validateProvisioningRule(name, value, valueType, phase, manufacturer, productClass, tag, description string) error {
 	if err := validateParameterNames([]string{name}); err != nil {
 		return err
 	}
@@ -2047,7 +2105,7 @@ func validateProvisioningRule(name, value, valueType, phase, manufacturer, produ
 	default:
 		return errors.New("unsupported provisioning phase (must be 'bootstrap' or 'default')")
 	}
-	if len(manufacturer) > 128 || len(productClass) > 128 {
+	if len(manufacturer) > 128 || len(productClass) > 128 || len(tag) > 128 {
 		return errors.New("provisioning scope exceeds 128 characters")
 	}
 	if len(description) > 2048 || strings.ContainsRune(description, '\x00') {
