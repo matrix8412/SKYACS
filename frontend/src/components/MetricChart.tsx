@@ -1,8 +1,8 @@
 import type { Component } from 'solid-js';
-import { createSignal, createResource, onMount, onCleanup, Show } from 'solid-js';
+import { createSignal, createResource, createEffect, onCleanup, Show } from 'solid-js';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
-import { api, type MetricDefinition, type AggregatedMetric, type MetricSample } from '../lib/api';
+import { api, type MetricDefinition } from '../lib/api';
 
 interface MetricChartProps {
   serial: string;
@@ -24,7 +24,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   let chart: uPlot | null = null;
   let resizeObserver: ResizeObserver | null = null;
 
-  const [data, { refetch }] = createResource(
+  const [data] = createResource(
     () => ({ serial: props.serial, metricId: props.metric.id, bucket: bucket().value, hours: bucket().hours }),
     (q) => api.getDeviceMetrics(q.serial, q.metricId, q.bucket, q.hours),
   );
@@ -56,7 +56,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     }
 
     const isAggregated = s.series.length > 2;
-    const specs: uPlot.SeriesSpec[] = [
+    const specs: uPlot.Series[] = [
       { label: 'Time' },
       { label: props.metric.name + (props.metric.unit ? ` (${props.metric.unit})` : ''), stroke: '#38bdf8', width: 2, fill: 'rgba(56,189,248,0.08)' },
     ];
@@ -73,7 +73,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       series: specs,
       cursor: { drag: { x: true, y: false } },
       scales: {
-        time: { time: true, dist: true, space: 0.75 },
+        time: { time: true },
         value: { auto: true },
       },
       axes: [
@@ -81,7 +81,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
           stroke: '#475569',
           grid: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
           ticks: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
-          label: { show: false },
+          label: '',
           font: '11px "IBM Plex Mono", monospace',
           space: 40,
         },
@@ -89,7 +89,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
           stroke: '#475569',
           grid: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
           ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-          label: { show: false },
+          label: '',
           font: '11px "IBM Plex Mono", monospace',
           space: 40,
         },
@@ -115,8 +115,9 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     resizeObserver.observe(chartEl()!);
   };
 
-  onMount(() => {
-    data.on('response', () => renderChart());
+  createEffect(() => {
+    data();
+    renderChart();
   });
 
   onCleanup(() => {
