@@ -39,6 +39,7 @@ type Router struct {
 	provisioningRepo *database.ProvisioningRepository
 	auditRepo        *database.AuditRepository
 	blockedRepo      *database.BlockedDeviceRepository
+	metricRepo       *database.MetricRepository
 	loginLimiter     *loginLimiter
 	downloadLimiter  *loginLimiter
 	uploadDir        string
@@ -78,6 +79,7 @@ func NewRouter(db *gorm.DB) *Router {
 		provisioningRepo: database.NewProvisioningRepository(db),
 		auditRepo:        database.NewAuditRepository(db),
 		blockedRepo:      database.NewBlockedDeviceRepository(db),
+		metricRepo:       database.NewMetricRepository(db),
 		loginLimiter:     newLoginLimiter(5, 15*time.Minute),
 		downloadLimiter:  newLoginLimiter(60, time.Minute),
 		uploadDir:        uploadDir,
@@ -157,6 +159,13 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("PUT /provisioning/{id}", auth.RequireFullAccess(r.handleUpdateProvisioningRule))
 	apiMux.HandleFunc("DELETE /provisioning/{id}", auth.RequireFullAccess(r.handleDeleteProvisioningRule))
 	apiMux.HandleFunc("POST /provisioning/{id}/toggle", auth.RequireFullAccess(r.handleToggleProvisioningRule))
+
+	// Metric endpoints
+	apiMux.HandleFunc("GET /metrics/definitions", r.handleListMetricDefinitions)
+	apiMux.HandleFunc("POST /metrics/definitions", auth.RequireFullAccess(r.handleCreateMetricDefinition))
+	apiMux.HandleFunc("PUT /metrics/definitions/{id}", auth.RequireFullAccess(r.handleUpdateMetricDefinition))
+	apiMux.HandleFunc("DELETE /metrics/definitions/{id}", auth.RequireFullAccess(r.handleDeleteMetricDefinition))
+	apiMux.HandleFunc("GET /device/{serial}/metrics", r.handleGetDeviceMetrics)
 
 	// Security center (full access only)
 	apiMux.HandleFunc("GET /security/overview", auth.RequireFullAccess(r.handleSecurityOverview))

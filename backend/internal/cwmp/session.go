@@ -31,6 +31,12 @@ type Session struct {
 	Provisioning      *SetParameterValues
 	ProvisioningRules []models.ProvisioningApplication
 
+	// Metric collection state
+	DeviceType        string
+	MetricFetchReady  bool
+	MetricFetchParams []string
+	LastMetricFetch   time.Time
+
 	State        SessionState
 	CreatedAt    time.Time
 	LastActivity time.Time

@@ -1,12 +1,13 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
 import { useParams, A, useNavigate } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags } from 'lucide-solid';
-import { api } from '../lib/api';
+import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity } from 'lucide-solid';
+import { api, type MetricDefinition } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
+import MetricChart from '../components/MetricChart';
 
 const DeviceDetail: Component = () => {
   const params = useParams<{ serial: string }>();
@@ -18,6 +19,7 @@ const DeviceDetail: Component = () => {
   const [device, { refetch: refetchDevice }] = createResource(serial, api.getDevice);
   const [parameters, { refetch: refetchParams }] = createResource(serial, api.getDeviceParameters);
   const [tasks, { refetch: refetchTasks }] = createResource(serial, api.getDeviceTasks);
+  const [metricDefs] = createResource(api.getMetricDefinitions);
 
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [message, setMessage] = createSignal<{ type: 'success' | 'error'; text: string; detail?: string } | null>(null);
@@ -37,6 +39,20 @@ const DeviceDetail: Component = () => {
   const [tagsLoading, setTagsLoading] = createSignal(false);
 
   const deviceTags = createMemo(() => device()?.tags || []);
+
+  const matchingMetrics = createMemo(() => {
+    const defs = metricDefs() || [];
+    const d = device();
+    if (!d) return [];
+    const deviceType = `${d.manufacturer || ''}/${d.product_class || ''}`;
+    return defs.filter((def) => {
+      if (!def.active) return false;
+      if (def.device_type_match === '' || def.device_type_match === '*') return true;
+      // Simple glob: support * wildcard
+      const pattern = def.device_type_match.replace(/\*/g, '.*');
+      return new RegExp(`^${pattern}$`).test(deviceType);
+    });
+  });
 
   const handleAddTag = async () => {
     const tag = newTag().trim().toLowerCase();
@@ -893,6 +909,23 @@ const DeviceDetail: Component = () => {
                 </div>
               </div></Show>
             </div>
+
+            {/* Row 1.2: Metrics */}
+            <Show when={matchingMetrics().length > 0}>
+              <div class="card p-5">
+                <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
+                  <Activity size={14} />
+                  Metrics
+                </h2>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <For each={matchingMetrics()}>
+                    {(metric) => (
+                      <MetricChart serial={serial()} metric={metric} />
+                    )}
+                  </For>
+                </div>
+              </div>
+            </Show>
 
             {/* Row 1.5: Modem Credentials */}
             <div class="card p-5">

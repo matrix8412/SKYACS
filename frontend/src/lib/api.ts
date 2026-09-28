@@ -29,6 +29,9 @@ export interface User { id: number; username: string; role: 'full' | 'read'; cre
 export interface ProvisioningRule { id: number; parameter_name: string; parameter_value: string; parameter_type: string; phase: string; manufacturer: string; product_class: string; tag: string; enabled: boolean; description: string }
 export interface AuditLog { id: number; user_id?: number; username: string; action: string; resource: string; status: number; ip_address: string; user_agent?: string; created_at: string }
 export interface BlockedDevice { id: number; serial_number: string; reason: string; created_by: string; created_at: string }
+export interface MetricDefinition { id: number; name: string; description: string; device_type_match: string; parameter_name: string; unit: string; source: 'passive' | 'active' | 'universal'; active: boolean; created_at: string; updated_at: string }
+export interface MetricSample { device_id: number; metric_id: number; value: number; timestamp: string }
+export interface AggregatedMetric { timestamp: string; avg: number; min: number; max: number; count: number }
 
 export const getStoredToken = () => sessionStorage.getItem('skyacs_token');
 
@@ -111,4 +114,13 @@ export const api = {
   getBlockedDevices: () => request<BlockedDevice[]>('/blocked-devices'),
   blockDevice: (serialNumber: string, reason: string) => request<BlockedDevice>('/blocked-devices', { method: 'POST', body: JSON.stringify({ serial_number: serialNumber, reason }) }),
   unblockDevice: (serialNumber: string) => request<{ status: string }>(`/blocked-devices/${encodeURIComponent(serialNumber)}`, { method: 'DELETE' }),
+
+  getMetricDefinitions: () => request<MetricDefinition[]>('/metrics/definitions'),
+  createMetricDefinition: (body: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>) => request<MetricDefinition>('/metrics/definitions', { method: 'POST', body: JSON.stringify(body) }),
+  updateMetricDefinition: (id: number, body: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>) => request<MetricDefinition>(`/metrics/definitions/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteMetricDefinition: (id: number) => request<{ status: string }>(`/metrics/definitions/${id}`, { method: 'DELETE' }),
+  getDeviceMetrics: (serial: string, metricId: number, bucket = '5min', hours = 24) => {
+    const from = new Date(Date.now() - hours * 3600_000).toISOString();
+    return request<{ samples?: MetricSample[]; aggregates?: AggregatedMetric[] }>(`/device/${encodeURIComponent(serial)}/metrics?metric_id=${metricId}&bucket=${bucket}&from=${from}`);
+  },
 };

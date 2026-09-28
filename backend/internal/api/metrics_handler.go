@@ -1,0 +1,190 @@
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/skydashnet/skyacs/internal/auth"
+	"github.com/skydashnet/skyacs/internal/models"
+)
+
+func (r *Router) handleListMetricDefinitions(w http.ResponseWriter, req *http.Request) {
+	defs, err := r.metricRepo.ListAll(req.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to list metric definitions")
+		return
+	}
+	respondJSON(w, http.StatusOK, defs)
+}
+
+func (r *Router) handleCreateMetricDefinition(w http.ResponseWriter, req *http.Request) {
+	claims := auth.GetUserFromContext(req.Context())
+	if claims == nil || claims.Role != models.RoleFull {
+		respondError(w, http.StatusForbidden, "Full access required")
+		return
+	}
+
+	var body models.MetricDefinition
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := validateMetricDefinition(&body); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if body.Source == "" {
+		body.Source = "passive"
+	}
+	if body.DeviceTypeMatch == "" {
+		body.DeviceTypeMatch = "*"
+	}
+
+	if err := r.metricRepo.Create(req.Context(), &body); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to create metric definition")
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, body)
+}
+
+func (r *Router) handleUpdateMetricDefinition(w http.ResponseWriter, req *http.Request) {
+	claims := auth.GetUserFromContext(req.Context())
+	if claims == nil || claims.Role != models.RoleFull {
+		respondError(w, http.StatusForbidden, "Full access required")
+		return
+	}
+
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid metric ID")
+		return
+	}
+
+	var body models.MetricDefinition
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if err := validateMetricDefinition(&body); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	body.ID = id
+	if err := r.metricRepo.Update(req.Context(), &body); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update metric definition")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, body)
+}
+
+func (r *Router) handleDeleteMetricDefinition(w http.ResponseWriter, req *http.Request) {
+	claims := auth.GetUserFromContext(req.Context())
+	if claims == nil || claims.Role != models.RoleFull {
+		respondError(w, http.StatusForbidden, "Full access required")
+		return
+	}
+
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid metric ID")
+		return
+	}
+
+	if err := r.metricRepo.Delete(req.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to delete metric definition")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (r *Router) handleGetDeviceMetrics(w http.ResponseWriter, req *http.Request) {
+	serial := req.PathValue("serial")
+	device, err := r.deviceRepo.GetBySerial(req.Context(), serial)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+
+	q := req.URL.Query()
+	metricIDStr := q.Get("metric_id")
+	metricID, err := strconv.ParseInt(metricIDStr, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "metric_id query parameter is required")
+		return
+	}
+
+	bucket := q.Get("bucket")
+	if bucket == "" {
+		bucket = "5min"
+	}
+
+	from := time.Now().Add(-24 * time.Hour)
+	if v := q.Get("from"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			from = t
+		}
+	}
+	to := time.Now()
+	if v := q.Get("to"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			to = t
+		}
+	}
+
+	if bucket == "raw" {
+		samples, err := r.metricRepo.QueryRaw(req.Context(), device.ID, metricID, from, to)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to query metric samples")
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]interface{}{"samples": samples})
+		return
+	}
+
+	rows, err := r.metricRepo.QueryAggregated(req.Context(), device.ID, metricID, from, to, bucket)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to query aggregated metrics")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"aggregates": rows})
+}
+
+func validateMetricDefinition(def *models.MetricDefinition) error {
+	if def.Name == "" || len(def.Name) > 128 {
+		return errors.New("metric name is required and must be at most 128 characters")
+	}
+	if def.ParameterName == "" || len(def.ParameterName) > 512 {
+		return errors.New("parameter_name is required and must be at most 512 characters")
+	}
+	if len(def.DeviceTypeMatch) > 256 {
+		return errors.New("device_type_match exceeds 256 characters")
+	}
+	if len(def.Unit) > 32 {
+		return errors.New("unit exceeds 32 characters")
+	}
+	switch def.Source {
+	case "passive", "active", "universal":
+	default:
+		return errors.New("source must be 'passive', 'active', or 'universal'")
+	}
+	if len(def.Description) > 512 {
+		return errors.New("description exceeds 512 characters")
+	}
+	return nil
+}

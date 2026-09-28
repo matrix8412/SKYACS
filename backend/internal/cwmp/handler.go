@@ -22,17 +22,19 @@ import (
 )
 
 type Handler struct {
-	sessions         *SessionManager
-	deviceRepo       *database.DeviceRepository
-	taskRepo         *database.TaskRepository
-	parameterRepo    *database.ParameterRepository
-	provisioningRepo *database.ProvisioningRepository
-	faultRepo        *database.FaultRepository
-	blockedRepo      *database.BlockedDeviceRepository
-	cwmpUsername     string
-	cwmpPassword     string
-	allowedNetworks  []*net.IPNet
-	trustedProxies   []*net.IPNet
+	sessions           *SessionManager
+	deviceRepo         *database.DeviceRepository
+	taskRepo           *database.TaskRepository
+	parameterRepo      *database.ParameterRepository
+	provisioningRepo   *database.ProvisioningRepository
+	faultRepo          *database.FaultRepository
+	blockedRepo        *database.BlockedDeviceRepository
+	metricRepo         *database.MetricRepository
+	metricPollInterval time.Duration
+	cwmpUsername       string
+	cwmpPassword       string
+	allowedNetworks    []*net.IPNet
+	trustedProxies     []*net.IPNet
 }
 
 func NewHandler(db *gorm.DB) *Handler {
@@ -42,6 +44,7 @@ func NewHandler(db *gorm.DB) *Handler {
 	var provisioningRepo *database.ProvisioningRepository
 	var faultRepo *database.FaultRepository
 	var blockedRepo *database.BlockedDeviceRepository
+	var metricRepo *database.MetricRepository
 
 	if db != nil {
 		deviceRepo = database.NewDeviceRepository(db)
@@ -50,21 +53,30 @@ func NewHandler(db *gorm.DB) *Handler {
 		provisioningRepo = database.NewProvisioningRepository(db)
 		faultRepo = database.NewFaultRepository(db)
 		blockedRepo = database.NewBlockedDeviceRepository(db)
+		metricRepo = database.NewMetricRepository(db)
+	}
 
+	pollInterval := 15 * time.Minute
+	if v := os.Getenv("METRIC_POLL_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			pollInterval = d
+		}
 	}
 
 	return &Handler{
-		sessions:         NewSessionManager(2 * time.Minute),
-		deviceRepo:       deviceRepo,
-		taskRepo:         taskRepo,
-		parameterRepo:    parameterRepo,
-		provisioningRepo: provisioningRepo,
-		faultRepo:        faultRepo,
-		blockedRepo:      blockedRepo,
-		cwmpUsername:     os.Getenv("CWMP_USERNAME"),
-		cwmpPassword:     os.Getenv("CWMP_PASSWORD"),
-		allowedNetworks:  parseAllowedNetworks(os.Getenv("CWMP_ALLOWED_CIDRS")),
-		trustedProxies:   parseAllowedNetworks(os.Getenv("CWMP_TRUSTED_PROXY_CIDRS")),
+		sessions:           NewSessionManager(2 * time.Minute),
+		deviceRepo:         deviceRepo,
+		taskRepo:           taskRepo,
+		parameterRepo:      parameterRepo,
+		provisioningRepo:   provisioningRepo,
+		faultRepo:          faultRepo,
+		blockedRepo:        blockedRepo,
+		metricRepo:         metricRepo,
+		metricPollInterval: pollInterval,
+		cwmpUsername:       os.Getenv("CWMP_USERNAME"),
+		cwmpPassword:       os.Getenv("CWMP_PASSWORD"),
+		allowedNetworks:    parseAllowedNetworks(os.Getenv("CWMP_ALLOWED_CIDRS")),
+		trustedProxies:     parseAllowedNetworks(os.Getenv("CWMP_TRUSTED_PROXY_CIDRS")),
 	}
 }
 
@@ -269,6 +281,17 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 				log.Printf("Error saving Inform parameters: %v", err)
 			}
 		}
+
+		if h.metricRepo != nil && deviceID > 0 {
+			deviceType := inform.DeviceId.Manufacturer + "/" + inform.DeviceId.ProductClass
+			paramMap := make(map[string]string, len(inform.ParameterList.Parameters))
+			for _, p := range inform.ParameterList.Parameters {
+				paramMap[p.Name] = p.Value
+			}
+			if err := h.metricRepo.ExtractAndStore(ctx, deviceID, deviceType, paramMap); err != nil {
+				log.Printf("Error extracting metrics from Inform: %v", err)
+			}
+		}
 	}
 
 	hasBootstrap := hasEvent(inform, EventBootstrap)
@@ -315,6 +338,7 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	session.mu.Lock()
 	session.State = StateInformReceived
 	session.DeviceID = deviceID
+	session.DeviceType = inform.DeviceId.Manufacturer + "/" + inform.DeviceId.ProductClass
 	session.DataModelRoot = DetectDataModelRoot(inform.ParameterList.Parameters)
 	session.CWMPNamespace = envelope.CWMPNamespace
 	session.Provisioning = provisioning
@@ -322,6 +346,15 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	// Full-tree discovery is intentionally limited to BOOTSTRAP. PERIODIC
 	// informs already carry telemetry and must stay cheap for large fleets.
 	session.AutoFetchReady = hasBootstrap
+	// Active metric polling: schedule a GPV fetch if the interval has elapsed.
+	if h.metricRepo != nil && deviceID > 0 && h.metricPollInterval > 0 {
+		if time.Since(session.LastMetricFetch) >= h.metricPollInterval {
+			if params, err := h.metricRepo.ActiveParamNames(ctx, session.DeviceType); err == nil && len(params) > 0 {
+				session.MetricFetchReady = true
+				session.MetricFetchParams = params
+			}
+		}
+	}
 	session.mu.Unlock()
 
 	return response, nil
@@ -361,6 +394,11 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 		session.State = StateProcessingTasks
 		return &GetParameterValues{ParameterNames: []string{session.DataModelRoot}}, namespace, nil
 	}
+	if session.MetricFetchReady {
+		session.MetricFetchReady = false
+		session.State = StateProcessingTasks
+		return &GetParameterValues{ParameterNames: session.MetricFetchParams}, namespace, nil
+	}
 	session.State = StateIdle
 	return nil, namespace, nil
 }
@@ -395,6 +433,17 @@ func (h *Handler) handleGetParameterValuesResponse(ctx context.Context, resp *Ge
 		} else {
 			log.Printf("Saved %d parameters for device %d (serial: %s)", len(params), session.DeviceID, session.SerialNumber)
 		}
+	}
+
+	if h.metricRepo != nil && session.DeviceID > 0 {
+		paramMap := make(map[string]string, len(resp.ParameterList.Parameters))
+		for _, p := range resp.ParameterList.Parameters {
+			paramMap[p.Name] = p.Value
+		}
+		if err := h.metricRepo.ExtractAndStore(ctx, session.DeviceID, session.DeviceType, paramMap); err != nil {
+			log.Printf("Error extracting metrics from GPV response: %v", err)
+		}
+		session.LastMetricFetch = time.Now()
 	}
 
 	if session.AutoFetchPhase > 0 {

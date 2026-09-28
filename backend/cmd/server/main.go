@@ -328,6 +328,8 @@ func runAutoMigrate(db *gorm.DB) error {
 		&models.ProvisioningApplication{},
 		&models.AuditLog{},
 		&models.BlockedDevice{},
+		&models.MetricDefinition{},
+		&models.MetricSample{},
 		&database.Setting{},
 	}
 
@@ -343,6 +345,9 @@ func runAutoMigrate(db *gorm.DB) error {
 	}
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_command_key_unique ON tasks (command_key) WHERE command_key <> ''").Error; err != nil {
 		return fmt.Errorf("create unique task command key index: %w", err)
+	}
+	if err := database.SetupTimescaleDB(db); err != nil {
+		return fmt.Errorf("setup timescaledb: %w", err)
 	}
 
 	defaultSettings := []database.Setting{
