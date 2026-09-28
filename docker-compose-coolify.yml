@@ -3,6 +3,7 @@ services:
   skyacs-postgres:
     image: timescale/timescaledb:latest-pg17
     restart: unless-stopped
+    command: postgres -c shared_preload_libraries=timescaledb
 
     environment:
       POSTGRES_DB: skyacs
