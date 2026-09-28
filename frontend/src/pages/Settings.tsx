@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js';
-import { createResource, createSignal, Show, For } from 'solid-js';
-import { Save, Settings as SettingsIcon, Info, Users, Plus, Trash2, Edit2, Key, LogOut } from 'lucide-solid';
+import { createResource, createSignal, Show, For, createMemo, createEffect, onMount } from 'solid-js';
+import { Save, Settings as SettingsIcon, Info, Users, Plus, Trash2, Edit2, Key, LogOut, Settings2, X, Check, GripVertical, ChevronLeft, ChevronRight } from 'lucide-solid';
 import { api, type ProvisioningRule, type User } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
@@ -8,6 +8,24 @@ import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 
 import { useAuth } from '../lib/auth';
+
+interface ProvColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+  order: number;
+}
+
+const defaultProvColumns: ProvColumnConfig[] = [
+  { id: 'parameter', label: 'Parameter', visible: true, order: 0 },
+  { id: 'value', label: 'Value', visible: true, order: 1 },
+  { id: 'manufacturer', label: 'Manufacturer scope', visible: true, order: 2 },
+  { id: 'product_class', label: 'Product class scope', visible: true, order: 3 },
+  { id: 'phase', label: 'Phase', visible: true, order: 4 },
+  { id: 'status', label: 'Status', visible: true, order: 5 },
+];
+
+const PROV_STORAGE_KEY = 'skyacs_prov_columns';
 
 interface SettingField {
   key: string;
@@ -53,6 +71,85 @@ const Settings: Component = () => {
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
   const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', enabled: true, description: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
+
+  // Provisioning column visibility
+  const [provColumns, setProvColumns] = createSignal<ProvColumnConfig[]>([]);
+  const [showProvColumnSettings, setShowProvColumnSettings] = createSignal(false);
+  const [provDraggedCol, setProvDraggedCol] = createSignal<string | null>(null);
+
+  onMount(() => {
+    const saved = localStorage.getItem(PROV_STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const merged = defaultProvColumns.map(dc => {
+          const s = parsed.find((p: ProvColumnConfig) => p.id === dc.id);
+          return s ? { ...dc, visible: s.visible, order: s.order } : dc;
+        });
+        setProvColumns(merged.sort((a, b) => a.order - b.order));
+      } catch {
+        setProvColumns([...defaultProvColumns]);
+      }
+    } else {
+      setProvColumns([...defaultProvColumns]);
+    }
+  });
+
+  createEffect(() => {
+    const cols = provColumns();
+    if (cols.length > 0) {
+      localStorage.setItem(PROV_STORAGE_KEY, JSON.stringify(cols));
+    }
+  });
+
+  const visibleProvColumns = createMemo(() =>
+    provColumns().filter(c => c.visible).sort((a, b) => a.order - b.order)
+  );
+
+  const toggleProvColumn = (id: string) => {
+    setProvColumns(cols => cols.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
+  };
+
+  const handleProvDragStart = (e: DragEvent, id: string) => {
+    setProvDraggedCol(id);
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', id);
+    }
+  };
+
+  const handleProvDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleProvDrop = (e: DragEvent, targetId: string) => {
+    e.preventDefault();
+    const sourceId = provDraggedCol();
+    if (!sourceId || sourceId === targetId) return;
+    setProvColumns(cols => {
+      const sorted = [...cols].sort((a, b) => a.order - b.order);
+      const sourceIdx = sorted.findIndex(c => c.id === sourceId);
+      const targetIdx = sorted.findIndex(c => c.id === targetId);
+      if (sourceIdx === -1 || targetIdx === -1) return cols;
+      const [removed] = sorted.splice(sourceIdx, 1);
+      sorted.splice(targetIdx, 0, removed);
+      return sorted.map((c, i) => ({ ...c, order: i }));
+    });
+    setProvDraggedCol(null);
+  };
+
+  const moveProvColumn = (id: string, offset: -1 | 1) => {
+    setProvColumns((current) => {
+      const sorted = [...current].sort((a, b) => a.order - b.order);
+      const index = sorted.findIndex((column) => column.id === id);
+      const target = index + offset;
+      if (index < 0 || target < 0 || target >= sorted.length) return current;
+      [sorted[index], sorted[target]] = [sorted[target]!, sorted[index]!];
+      return sorted.map((column, order) => ({ ...column, order }));
+    });
+  };
+
   const handleChange = (key: string, value: string) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
@@ -293,32 +390,85 @@ const Settings: Component = () => {
           <Show when={!users.loading && !users.error && (users()?.length ?? 0) === 0}><EmptyState compact title="No additional operators exist" description="Create a named operator account instead of sharing administrative credentials." action={<button type="button" class="btn btn-primary" onClick={openCreateUser}>Add operator</button>} /></Show>
         </div>
 
-        {/* Auto Provisioning */}
+        {/* Provisioning */}
         <div class="card p-5 mt-5">
           <div class="flex items-center justify-between mb-4">
             <div>
               <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
                 <SettingsIcon size={14} />
-                BOOTSTRAP provisioning
+                Provisioning
               </h2>
               <p class="text-muted text-xs mt-1">Controlled CWMP parameters applied automatically to matching CPEs based on trigger phase.</p>
             </div>
-            <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
-              <Plus size={12} />
-              Add rule
-            </button>
+            <div class="flex items-center gap-2">
+              <button onClick={() => setShowProvColumnSettings(!showProvColumnSettings())}
+                class={`btn btn-secondary text-xs py-1.5 ${showProvColumnSettings() ? 'bg-sky-500/20 text-sky-400' : ''}`}
+                aria-expanded={showProvColumnSettings()}
+                aria-controls="prov-column-settings"
+              >
+                <Settings2 size={12} />
+                Columns
+              </button>
+              <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
+                <Plus size={12} />
+                Add rule
+              </button>
+            </div>
           </div>
 
-          <Show when={provRules.error}><ResourceError title="Provisioning rules are unavailable" description="The current BOOTSTRAP policy could not be loaded. Retry before changing a device rollout." onRetry={() => refetchProvRules()} /></Show>
+          {/* Column Settings Panel */}
+          <Show when={showProvColumnSettings()}>
+            <div id="prov-column-settings" class="card p-4 mb-4">
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-medium text-secondary">Manage Columns</h3>
+                <button onClick={() => setShowProvColumnSettings(false)} class="icon-button" aria-label="Close column settings">
+                  <X size={16} />
+                </button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <For each={provColumns().sort((a, b) => a.order - b.order)}>
+                  {(col) => (
+                    <div
+                      draggable={true}
+                      onDragStart={(e) => handleProvDragStart(e, col.id)}
+                      onDragOver={handleProvDragOver}
+                      onDrop={(e) => handleProvDrop(e, col.id)}
+                      class={`flex items-center gap-2 px-3 py-1.5 bg-elevated cursor-grab active:cursor-grabbing transition-all ${provDraggedCol() === col.id ? 'opacity-50 scale-95' : 'hover:bg-elevated/80'}`}
+                    >
+                      <GripVertical size={12} class="text-muted" />
+                      <button
+                        onClick={() => toggleProvColumn(col.id)}
+                        class={`icon-button ${col.visible ? 'text-sky-400 border-sky-500' : ''}`}
+                        aria-label={`${col.visible ? 'Hide' : 'Show'} ${col.label} column`}
+                        aria-pressed={col.visible}
+                      >
+                        {col.visible && <Check size={10} class="text-white" />}
+                      </button>
+                      <span class={`text-sm ${col.visible ? 'text-primary' : 'text-muted'}`}>
+                        {col.label}
+                      </span>
+                      <span class="inline-flex ml-auto">
+                        <button type="button" class="icon-button" onClick={() => moveProvColumn(col.id, -1)} aria-label={`Move ${col.label} column left`}><ChevronLeft size={12} /></button>
+                        <button type="button" class="icon-button" onClick={() => moveProvColumn(col.id, 1)} aria-label={`Move ${col.label} column right`}><ChevronRight size={12} /></button>
+                      </span>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          </Show>
+
+          <Show when={provRules.error}><ResourceError title="Provisioning rules are unavailable" description="The current provisioning policy could not be loaded. Retry before changing a device rollout." onRetry={() => refetchProvRules()} /></Show>
           <Show when={provRules.loading}><div class="space-y-3"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-4/5" /></div></Show>
           <Show when={!provRules.loading && !provRules.error && (provRules()?.length ?? 0) > 0}>
-            <div class="overflow-x-auto"><table class="data-table w-full text-sm min-w-[660px]">
+            <div class="overflow-x-auto"><table class="data-table w-full text-sm min-w-[820px]">
               <thead>
                 <tr class="border-b border-subtle">
-                  <th class="text-left py-2 text-xs text-muted font-medium">Parameter</th>
-                  <th class="text-left py-2 text-xs text-muted font-medium">Value</th>
-                  <th class="text-left py-2 text-xs text-muted font-medium">Phase</th>
-                  <th class="text-left py-2 text-xs text-muted font-medium">Status</th>
+                  <For each={visibleProvColumns()}>
+                    {(col) => (
+                      <th class="text-left py-2 text-xs text-muted font-medium">{col.label}</th>
+                    )}
+                  </For>
                   <th class="text-right py-2 text-xs text-muted font-medium">Actions</th>
                 </tr>
               </thead>
@@ -326,26 +476,40 @@ const Settings: Component = () => {
                 <For each={provRules()}>
                   {(p) => (
                     <tr class="border-b border-subtle/50">
-                      <td class="py-2">
-                        <span class="text-primary text-xs font-mono">{p.parameter_name}</span>
-                        <Show when={p.description}>
-                          <p class="text-muted text-xs">{p.description}</p>
-                        </Show>
-                      </td>
-                      <td class="py-2 text-secondary text-xs font-mono max-w-xs truncate">{p.parameter_value}</td>
-                      <td class="py-2">
-                        <span class={`text-xs px-1.5 py-0.5 rounded ${p.phase === 'default' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'}`}>{p.phase || 'bootstrap'}</span>
-                      </td>
-                      <td class="py-2">
-                        <button
-                          onClick={() => handleToggleProv(p.id, !p.enabled)}
-                          class={`btn ${p.enabled ? 'btn-secondary' : 'btn-danger'}`}
-                          aria-pressed={p.enabled}
-                          disabled={pendingAction() !== null}
-                        >
-                          {pendingAction() === `toggle-provisioning-${p.id}` ? 'Updating…' : p.enabled ? 'Active' : 'Disabled'}
-                        </button>
-                      </td>
+                      <Show when={visibleProvColumns().some(c => c.id === 'parameter')}>
+                        <td class="py-2">
+                          <span class="text-primary text-xs font-mono">{p.parameter_name}</span>
+                          <Show when={p.description}>
+                            <p class="text-muted text-xs">{p.description}</p>
+                          </Show>
+                        </td>
+                      </Show>
+                      <Show when={visibleProvColumns().some(c => c.id === 'value')}>
+                        <td class="py-2 text-secondary text-xs font-mono max-w-xs truncate">{p.parameter_value}</td>
+                      </Show>
+                      <Show when={visibleProvColumns().some(c => c.id === 'manufacturer')}>
+                        <td class="py-2 text-secondary text-xs">{p.manufacturer || '—'}</td>
+                      </Show>
+                      <Show when={visibleProvColumns().some(c => c.id === 'product_class')}>
+                        <td class="py-2 text-secondary text-xs">{p.product_class || '—'}</td>
+                      </Show>
+                      <Show when={visibleProvColumns().some(c => c.id === 'phase')}>
+                        <td class="py-2">
+                          <span class={`text-xs px-1.5 py-0.5 rounded ${p.phase === 'default' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'}`}>{p.phase || 'bootstrap'}</span>
+                        </td>
+                      </Show>
+                      <Show when={visibleProvColumns().some(c => c.id === 'status')}>
+                        <td class="py-2">
+                          <button
+                            onClick={() => handleToggleProv(p.id, !p.enabled)}
+                            class={`btn ${p.enabled ? 'btn-secondary' : 'btn-danger'}`}
+                            aria-pressed={p.enabled}
+                            disabled={pendingAction() !== null}
+                          >
+                            {pendingAction() === `toggle-provisioning-${p.id}` ? 'Updating…' : p.enabled ? 'Active' : 'Disabled'}
+                          </button>
+                        </td>
+                      </Show>
                       <td class="py-2 text-right">
                         <div class="flex items-center justify-end gap-1">
                           <button onClick={() => openEditProv(p)} class="icon-button" aria-label={`Edit provisioning rule ${p.parameter_name}`} disabled={pendingAction() !== null}>
@@ -363,7 +527,7 @@ const Settings: Component = () => {
             </table></div>
           </Show>
 
-          <Show when={!provRules.loading && !provRules.error && (provRules()?.length ?? 0) === 0}><EmptyState compact title="No BOOTSTRAP provisioning rules exist" description="Add a scoped rule only when a parameter must be applied automatically to matching CPEs." action={<button type="button" class="btn btn-primary" onClick={openCreateProv}>Add provisioning rule</button>} /></Show>
+          <Show when={!provRules.loading && !provRules.error && (provRules()?.length ?? 0) === 0}><EmptyState compact title="No provisioning rules exist" description="Add a scoped rule only when a parameter must be applied automatically to matching CPEs." action={<button type="button" class="btn btn-primary" onClick={openCreateProv}>Add provisioning rule</button>} /></Show>
         </div>
       </Show>
 
