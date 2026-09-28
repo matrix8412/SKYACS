@@ -274,13 +274,29 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	hasBootstrap := hasEvent(inform, EventBootstrap)
 	var provisioning *SetParameterValues
 	var provisioningRules []models.ProvisioningApplication
-	if hasBootstrap && deviceID > 0 && h.provisioningRepo != nil {
-		rules, err := h.provisioningRepo.ListPendingForDevice(ctx, deviceID, inform.DeviceId.Manufacturer, inform.DeviceId.ProductClass)
-		if err == nil && len(rules) > 0 {
-			log.Printf("Applying %d provisioning rules to device %s", len(rules), inform.DeviceId.SerialNumber)
+
+	if deviceID > 0 && h.provisioningRepo != nil {
+		var allRules []*models.ProvisioningRule
+
+		// Default phase rules apply on every inform (re-applied when rule version changes)
+		defaultRules, err := h.provisioningRepo.ListPendingForDevice(ctx, deviceID, inform.DeviceId.Manufacturer, inform.DeviceId.ProductClass, "default")
+		if err == nil {
+			allRules = append(allRules, defaultRules...)
+		}
+
+		// Bootstrap phase rules only apply on the BOOTSTRAP event
+		if hasBootstrap {
+			bootstrapRules, err := h.provisioningRepo.ListPendingForDevice(ctx, deviceID, inform.DeviceId.Manufacturer, inform.DeviceId.ProductClass, "bootstrap")
+			if err == nil {
+				allRules = append(allRules, bootstrapRules...)
+			}
+		}
+
+		if len(allRules) > 0 {
+			log.Printf("Applying %d provisioning rules to device %s", len(allRules), inform.DeviceId.SerialNumber)
 
 			spv := &SetParameterValues{ParameterKey: "auto-provisioning"}
-			for _, rule := range rules {
+			for _, rule := range allRules {
 				provisioningRules = append(provisioningRules, models.ProvisioningApplication{RuleID: rule.ID, RuleVersion: rule.Version})
 				spv.ParameterList.Parameters = append(spv.ParameterList.Parameters, ParameterValueStruct{
 					Name:  rule.ParameterName,

@@ -1964,7 +1964,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Manufacturer, body.ProductClass, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -1972,11 +1972,15 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 	if body.ParameterType == "" {
 		body.ParameterType = "string"
 	}
+	if body.Phase == "" {
+		body.Phase = "bootstrap"
+	}
 
 	rule := &models.ProvisioningRule{
 		ParameterName:  body.ParameterName,
 		ParameterValue: body.ParameterValue,
 		ParameterType:  body.ParameterType,
+		Phase:          body.Phase,
 		Manufacturer:   strings.TrimSpace(body.Manufacturer),
 		ProductClass:   strings.TrimSpace(body.ProductClass),
 		Enabled:        body.Enabled,
@@ -2012,7 +2016,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Manufacturer, body.ProductClass, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2026,7 +2030,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 	respondJSON(w, http.StatusOK, body)
 }
 
-func validateProvisioningRule(name, value, valueType, manufacturer, productClass, description string) error {
+func validateProvisioningRule(name, value, valueType, phase, manufacturer, productClass, description string) error {
 	if err := validateParameterNames([]string{name}); err != nil {
 		return err
 	}
@@ -2037,6 +2041,11 @@ func validateProvisioningRule(name, value, valueType, manufacturer, productClass
 	case "", "string", "boolean", "int", "unsignedInt", "long", "unsignedLong", "dateTime", "base64", "hexBinary":
 	default:
 		return errors.New("unsupported CWMP parameter type")
+	}
+	switch phase {
+	case "", "bootstrap", "default":
+	default:
+		return errors.New("unsupported provisioning phase (must be 'bootstrap' or 'default')")
 	}
 	if len(manufacturer) > 128 || len(productClass) > 128 {
 		return errors.New("provisioning scope exceeds 128 characters")

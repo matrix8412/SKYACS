@@ -45,10 +45,11 @@ func (r *ProvisioningRepository) List(ctx context.Context) ([]*models.Provisioni
 	return rules, decryptProvisioningRules(rules)
 }
 
-func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, deviceID int64, manufacturer, productClass string) ([]*models.ProvisioningRule, error) {
+func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, deviceID int64, manufacturer, productClass, phase string) ([]*models.ProvisioningRule, error) {
 	var rules []*models.ProvisioningRule
 	if err := r.db.WithContext(ctx).
 		Where("enabled = ?", true).
+		Where("phase = ?", phase).
 		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
 		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
 		Where("NOT EXISTS (SELECT 1 FROM provisioning_applications pa WHERE pa.rule_id = provisioning_rules.id AND pa.rule_version = provisioning_rules.version AND pa.device_id = ?)", deviceID).
@@ -82,7 +83,7 @@ func (r *ProvisioningRepository) Update(ctx context.Context, rule *models.Provis
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return tx.Model(&models.ProvisioningRule{}).Where("id = ?", rule.ID).Updates(map[string]interface{}{
 			"parameter_name": rule.ParameterName, "parameter_value": value, "parameter_type": rule.ParameterType,
-			"manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "enabled": rule.Enabled, "description": rule.Description,
+			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "enabled": rule.Enabled, "description": rule.Description,
 			"version": gorm.Expr("version + 1"),
 		}).Error
 	})

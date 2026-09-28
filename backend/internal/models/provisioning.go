@@ -7,6 +7,7 @@ type ProvisioningRule struct {
 	ParameterName  string    `json:"parameter_name" gorm:"not null"`
 	ParameterValue string    `json:"parameter_value"`
 	ParameterType  string    `json:"parameter_type" gorm:"default:'string'"`
+	Phase          string    `json:"phase" gorm:"size:16;default:'bootstrap'"`
 	Manufacturer   string    `json:"manufacturer,omitempty" gorm:"size:128"`
 	ProductClass   string    `json:"product_class,omitempty" gorm:"size:128"`
 	Enabled        bool      `json:"enabled" gorm:"default:true"`
@@ -24,6 +25,7 @@ type CreateProvisioningRuleRequest struct {
 	ParameterName  string `json:"parameter_name"`
 	ParameterValue string `json:"parameter_value"`
 	ParameterType  string `json:"parameter_type"`
+	Phase          string `json:"phase"`
 	Manufacturer   string `json:"manufacturer"`
 	ProductClass   string `json:"product_class"`
 	Enabled        bool   `json:"enabled"`

@@ -51,7 +51,7 @@ const Settings: Component = () => {
 
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
-  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', manufacturer: '', product_class: '', enabled: true, description: '' };
+  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', enabled: true, description: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
   const handleChange = (key: string, value: string) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -191,7 +191,7 @@ const Settings: Component = () => {
 
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
-    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, manufacturer: p.manufacturer || '', product_class: p.product_class || '', enabled: p.enabled, description: p.description });
+    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', enabled: p.enabled, description: p.description });
     setShowProvModal(true);
   };
 
@@ -301,7 +301,7 @@ const Settings: Component = () => {
                 <SettingsIcon size={14} />
                 BOOTSTRAP provisioning
               </h2>
-              <p class="text-muted text-xs mt-1">Controlled CWMP parameters applied once when a matching CPE bootstraps.</p>
+              <p class="text-muted text-xs mt-1">Controlled CWMP parameters applied automatically to matching CPEs based on trigger phase.</p>
             </div>
             <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
               <Plus size={12} />
@@ -317,6 +317,7 @@ const Settings: Component = () => {
                 <tr class="border-b border-subtle">
                   <th class="text-left py-2 text-xs text-muted font-medium">Parameter</th>
                   <th class="text-left py-2 text-xs text-muted font-medium">Value</th>
+                  <th class="text-left py-2 text-xs text-muted font-medium">Phase</th>
                   <th class="text-left py-2 text-xs text-muted font-medium">Status</th>
                   <th class="text-right py-2 text-xs text-muted font-medium">Actions</th>
                 </tr>
@@ -332,6 +333,9 @@ const Settings: Component = () => {
                         </Show>
                       </td>
                       <td class="py-2 text-secondary text-xs font-mono max-w-xs truncate">{p.parameter_value}</td>
+                      <td class="py-2">
+                        <span class={`text-xs px-1.5 py-0.5 rounded ${p.phase === 'default' ? 'bg-blue-500/10 text-blue-400' : 'bg-emerald-500/10 text-emerald-400'}`}>{p.phase || 'bootstrap'}</span>
+                      </td>
                       <td class="py-2">
                         <button
                           onClick={() => handleToggleProv(p.id, !p.enabled)}
@@ -616,7 +620,7 @@ const Settings: Component = () => {
 
       {/* Provisioning Modal */}
       <Show when={showProvModal()}>
-        <Dialog title={editingProv() ? 'Edit provisioning rule' : 'Add provisioning rule'} description="Rules apply once during BOOTSTRAP and are tracked per CPE." size="medium" onClose={() => { if (!pendingAction()) setShowProvModal(false); }}>
+        <Dialog title={editingProv() ? 'Edit provisioning rule' : 'Add provisioning rule'} description="Rules are tracked per CPE and re-applied when the rule version changes." size="medium" onClose={() => { if (!pendingAction()) setShowProvModal(false); }}>
             <form class="space-y-4" onSubmit={(event) => { event.preventDefault(); void (editingProv() ? handleUpdateProv() : handleCreateProv()); }}>
               <div>
                 <label for="provisioning-parameter" class="block text-xs text-muted mb-1.5">CWMP parameter path</label>
@@ -681,7 +685,19 @@ const Settings: Component = () => {
                   <option value="unsignedInt">unsignedInt</option>
                   <option value="dateTime">dateTime</option>
                 </select>
-                <p class="text-xs text-muted mt-1">The rule runs once during BOOTSTRAP and records completion for each CPE.</p>
+              </div>
+              <div>
+                <label for="provisioning-phase" class="block text-xs text-muted mb-1.5">Trigger phase</label>
+                <select
+                  id="provisioning-phase"
+                  value={provForm().phase}
+                  onChange={(e) => setProvForm(f => ({ ...f, phase: e.currentTarget.value }))}
+                  class="input w-full"
+                >
+                  <option value="bootstrap">Bootstrap — applied once on first CPE connection</option>
+                  <option value="default">Default — re-applied on every inform when rule changes</option>
+                </select>
+                <p class="text-xs text-muted mt-1">Bootstrap rules run once during BOOTSTRAP. Default rules enforce ongoing configuration and re-apply when the rule is updated.</p>
               </div>
               <div>
                 <label for="provisioning-description" class="block text-xs text-muted mb-1.5">Operational description (optional)</label>
