@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For } from 'solid-js';
-import { Save, Settings as SettingsIcon, Info, Users, Trash2, Edit2, Key, LogOut } from 'lucide-solid';
+import { Save, Settings as SettingsIcon, Info, Users, Trash2, Edit2, Key, LogOut, Plus } from 'lucide-solid';
 import { api, type User } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
@@ -225,8 +225,7 @@ const Settings: Component = () => {
           </Show>
           <Show when={!users.loading && !users.error && (users()?.length ?? 0) === 0}><EmptyState compact title="No additional operators exist" description="Create a named operator account instead of sharing administrative credentials." action={<button type="button" class="btn btn-primary" onClick={openCreateUser}>Add operator</button>} /></Show>
         </div>
-
-
+      </Show>
 
       {/* Delivery and connection request settings */}
       <div class="card p-5">

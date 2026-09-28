@@ -39,13 +39,13 @@ const Provisioning: Component = () => {
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
 
   // Provisioning column visibility
-  const [provColumns, setProvColumns] = createSignal<ProvColumnConfig[]>(() => {
+  const [provColumns, setProvColumns] = createSignal<ProvColumnConfig[]>((() => {
     try {
       const stored = localStorage.getItem(PROV_STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
+      if (stored) return JSON.parse(stored) as ProvColumnConfig[];
     } catch { /* ignore */ }
     return defaultProvColumns;
-  });
+  })());
   const [showProvColumnSettings, setShowProvColumnSettings] = createSignal(false);
   const [provDraggedCol, setProvDraggedCol] = createSignal<string | null>(null);
 

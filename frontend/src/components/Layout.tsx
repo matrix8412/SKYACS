@@ -108,7 +108,7 @@ const Layout: ParentComponent = (props) => {
                         </button>
                         <Show when={settingsExpanded()}>
                           <div class="nav-submenu">
-                            <For each={item.children}>
+                            <For each={item.children ?? []}>
                               {(child) => (
                                 <A href={child.href} onClick={() => setSidebarOpen(false)} class={`nav-link nav-link-sub ${isActive(child.href) ? 'is-active' : ''}`} aria-current={isActive(child.href) ? 'page' : undefined}>
                                   <span>{child.label}</span>
