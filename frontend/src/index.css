@@ -114,6 +114,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .nav-link:hover { color: rgb(var(--text-primary)); background: rgb(var(--bg-elevated)); }
 .nav-link.is-active { color: rgb(var(--accent-hover)); background: rgb(var(--accent) / .09); border-color: rgb(var(--border-default)); }
 .nav-chevron { margin-left: auto; color: rgb(var(--accent)); }
+.nav-toggle { width: 100%; background: transparent; border: 1px solid transparent; cursor: pointer; font: inherit; }
+.nav-toggle:hover { color: rgb(var(--text-primary)); background: rgb(var(--bg-elevated)); }
+.nav-toggle.is-active { color: rgb(var(--accent-hover)); background: rgb(var(--accent) / .09); border-color: rgb(var(--border-default)); }
+.nav-chevron-down { margin-left: auto; color: rgb(var(--text-muted)); transition: transform .15s ease; }
+.nav-chevron-down.is-expanded { transform: rotate(180deg); }
+.nav-submenu { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 2px 27px; }
+.nav-link-sub { min-height: 30px; padding: 0 10px; font-size: 12px; font-weight: 400; color: rgb(var(--text-muted)); }
+.nav-link-sub:hover { color: rgb(var(--text-primary)); background: rgb(var(--bg-elevated)); }
+.nav-link-sub.is-active { color: rgb(var(--accent-hover)); background: rgb(var(--accent) / .09); }
 .sidebar-footer { padding: 10px; border-top: 1px solid rgb(var(--border-subtle)); }
 .operator-card { display: flex; align-items: center; gap: 9px; padding: 8px; background: transparent; border-top: 1px solid rgb(var(--border-subtle)); }
 .operator-avatar { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 3px; background: rgb(var(--accent) / .16); color: rgb(var(--accent)); font-size: 11px; font-weight: 700; }

@@ -2,7 +2,7 @@ import type { ParentComponent } from 'solid-js';
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { A, useLocation } from '@solidjs/router';
 import {
-  Activity, AlertTriangle, ChevronRight, HardDrive, LayoutDashboard, LogOut,
+  Activity, AlertTriangle, ChevronDown, ChevronRight, HardDrive, LayoutDashboard, LogOut,
   Menu, Moon, Router, Settings, ShieldCheck, Sun, X,
 } from 'lucide-solid';
 import { api } from '../lib/api';
@@ -20,7 +20,9 @@ const navigation = [
   { section: 'Control', items: [
     { href: '/firmwares', label: 'Firmware library', icon: HardDrive },
     { href: '/security', label: 'Access controls', icon: ShieldCheck, fullOnly: true },
-    { href: '/settings', label: 'System settings', icon: Settings },
+    { href: '/settings', label: 'System settings', icon: Settings, children: [
+      { href: '/settings/provisioning', label: 'Provisioning' },
+    ] },
   ] },
 ];
 
@@ -31,6 +33,7 @@ const pageNames: Record<string, string> = {
   '/firmwares': 'Firmware library',
   '/security': 'Security center',
   '/settings': 'System settings',
+  '/settings/provisioning': 'Provisioning',
 };
 
 const Brand = () => (
@@ -49,6 +52,7 @@ const Layout: ParentComponent = (props) => {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = createSignal(false);
   const [apiOnline, setAPIOnline] = createSignal<boolean | null>(null);
+  const [settingsExpanded, setSettingsExpanded] = createSignal(true);
   const { isDark, toggleTheme } = useTheme();
   const { user, logout, isFullAccess } = useAuth();
   let menuButton: HTMLButtonElement | undefined;
@@ -91,11 +95,37 @@ const Layout: ParentComponent = (props) => {
                 <p class="nav-section">{group.section}</p>
                 <For each={group.items.filter((item) => !item.fullOnly || isFullAccess())}>
                   {(item) => (
-                    <A href={item.href} onClick={() => setSidebarOpen(false)} class={`nav-link ${isActive(item.href) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined}>
-                      <item.icon size={17} stroke-width={1.7} />
-                      <span>{item.label}</span>
-                      <Show when={isActive(item.href)}><ChevronRight size={13} class="nav-chevron" /></Show>
-                    </A>
+                    <div>
+                      <Show when={item.children}>
+                        <button
+                          class={`nav-link nav-toggle ${isActive(item.href) ? 'is-active' : ''}`}
+                          onClick={() => setSettingsExpanded(!settingsExpanded())}
+                          aria-expanded={settingsExpanded()}
+                        >
+                          <item.icon size={17} stroke-width={1.7} />
+                          <span>{item.label}</span>
+                          <ChevronDown size={13} class={`nav-chevron-down ${settingsExpanded() ? 'is-expanded' : ''}`} />
+                        </button>
+                        <Show when={settingsExpanded()}>
+                          <div class="nav-submenu">
+                            <For each={item.children}>
+                              {(child) => (
+                                <A href={child.href} onClick={() => setSidebarOpen(false)} class={`nav-link nav-link-sub ${isActive(child.href) ? 'is-active' : ''}`} aria-current={isActive(child.href) ? 'page' : undefined}>
+                                  <span>{child.label}</span>
+                                </A>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      </Show>
+                      <Show when={!item.children}>
+                        <A href={item.href} onClick={() => setSidebarOpen(false)} class={`nav-link ${isActive(item.href) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined}>
+                          <item.icon size={17} stroke-width={1.7} />
+                          <span>{item.label}</span>
+                          <Show when={isActive(item.href)}><ChevronRight size={13} class="nav-chevron" /></Show>
+                        </A>
+                      </Show>
+                    </div>
                   )}
                 </For>
               </div>
