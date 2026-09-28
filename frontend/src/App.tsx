@@ -13,6 +13,8 @@ const Faults = lazy(() => import('./pages/Faults'));
 const Firmwares = lazy(() => import('./pages/Firmwares'));
 const Security = lazy(() => import('./pages/Security'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Users = lazy(() => import('./pages/Users'));
+const Delivery = lazy(() => import('./pages/Delivery'));
 const Provisioning = lazy(() => import('./pages/Provisioning'));
 
 // Initialize theme on app load
@@ -44,6 +46,8 @@ const App: Component = () => {
             <Route path="/firmwares" component={Firmwares} />
             <Route path="/security" component={Security} />
             <Route path="/settings" component={Settings} />
+            <Route path="/settings/users" component={Users} />
+            <Route path="/settings/delivery" component={Delivery} />
             <Route path="/settings/provisioning" component={Provisioning} />
           </Route>
         </Router>

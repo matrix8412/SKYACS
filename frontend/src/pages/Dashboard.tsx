@@ -75,7 +75,7 @@ const Dashboard: Component = () => {
           icon={<Router size={22} />}
           title="No CPEs have reported to SKYACS"
           description="The fleet register will populate after a device sends its first CWMP Inform. Verify the published CWMP endpoint and the CPE ACS URL."
-          action={<A class="btn btn-secondary" href="/settings">Review CWMP connection settings</A>}
+          action={<A class="btn btn-secondary" href="/settings/delivery">Review CWMP connection settings</A>}
         /></div>
       </Show>
 
