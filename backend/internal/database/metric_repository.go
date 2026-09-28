@@ -245,8 +245,9 @@ func SetupTimescaleDB(db *gorm.DB) error {
 		`SELECT add_retention_policy('metric_samples_1h', INTERVAL '30 days', if_not_exists => TRUE)`,
 		`SELECT add_retention_policy('metric_samples_1d', INTERVAL '365 days', if_not_exists => TRUE)`,
 		`ALTER TABLE metric_samples SET (
-			compresstimestamp = 'timestamp',
-			compression_segmentby = 'device_id, metric_id'
+			timescaledb.compress = TRUE,
+			timescaledb.compress_segmentby = 'device_id, metric_id',
+			timescaledb.compress_orderby = 'timestamp DESC'
 		)`,
 		`SELECT add_compression_policy('metric_samples', INTERVAL '2 hours', if_not_exists => TRUE)`,
 	}
