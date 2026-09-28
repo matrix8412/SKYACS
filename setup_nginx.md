@@ -66,7 +66,8 @@ Build frontend untuk prefix API yang sama:
 
 ```bash
 cd frontend
-printf 'VITE_API_URL=/api\n' > .env.production
+# VITE_APP_NAME is optional; it sets the brand shown in the UI (defaults to SkydashNET).
+printf 'VITE_API_URL=/api\nVITE_APP_NAME=MyBrand\n' > .env.production
 npm ci
 npm run build
 ```

@@ -127,6 +127,14 @@ npm ci --include=dev
 npm run dev
 ```
 
+The frontend reads two build-time variables: `VITE_API_URL` (API base path) and `VITE_APP_NAME` (brand shown in the sidebar, login screen, and browser tab; defaults to `SkydashNET`). For a production build, write them to `frontend/.env.production` before `npm run build`:
+
+```bash
+cd frontend
+printf 'VITE_API_URL=/api\nVITE_APP_NAME=MyBrand\n' > .env.production
+npm run build
+```
+
 The initial username is `admin`. Its password is read from `INITIAL_ADMIN_PASSWORD`; when that variable is empty, the backend generates and prints a random password once while creating the first operator. SKYACS does not ship with an `admin/admin` credential.
 
 ## Security configuration

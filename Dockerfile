@@ -36,7 +36,8 @@ COPY frontend/ ./frontend/
 
 WORKDIR /build/frontend
 
-RUN printf 'VITE_API_URL=/api\n' > .env.production && \
+ARG VITE_APP_NAME
+RUN printf 'VITE_API_URL=/api\nVITE_APP_NAME=%s\n' "${VITE_APP_NAME:-}" > .env.production && \
     npm run build
 
 

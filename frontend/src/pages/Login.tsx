@@ -4,6 +4,7 @@ import { useNavigate } from '@solidjs/router';
 import { Eye, EyeOff, Moon, Sun } from 'lucide-solid';
 import { useAuth } from '../lib/auth';
 import { APP_VERSION } from '../lib/version';
+import { APP_NAME } from '../lib/appName';
 import { useTheme } from '../lib/theme';
 
 const Login: Component = () => {
@@ -57,7 +58,7 @@ const Login: Component = () => {
           </dl>
         </div>
 
-        <div class="flex items-center justify-between text-[10px] text-muted"><span>SkydashNET infrastructure software</span><span>v{APP_VERSION}</span></div>
+        <div class="flex items-center justify-between text-[10px] text-muted"><span>{APP_NAME} infrastructure software</span><span>v{APP_VERSION}</span></div>
       </section>
 
       <section class="min-h-screen flex flex-col">

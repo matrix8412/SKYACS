@@ -8,6 +8,7 @@ import {
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { APP_VERSION } from '../lib/version';
+import { APP_NAME } from '../lib/appName';
 import { useTheme } from '../lib/theme';
 
 const navigation = [
@@ -111,7 +112,7 @@ const Layout: ParentComponent = (props) => {
             </div>
             <button class="icon-button" onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={16} /></button>
           </div>
-          <div class="sidebar-meta"><span>SkydashNET</span><span>v{APP_VERSION}</span></div>
+          <div class="sidebar-meta"><span>{APP_NAME}</span><span>v{APP_VERSION}</span></div>
         </div>
       </aside>
 

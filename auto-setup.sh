@@ -145,7 +145,7 @@ go build -trimpath -ldflags="-s -w" -o skyacs ./cmd/server
 
 cd "$ROOT_DIR/frontend"
 npm ci --include=dev --no-audit --no-fund
-printf 'VITE_API_URL=/api\n' >.env.production
+printf 'VITE_API_URL=/api\nVITE_APP_NAME=%s\n' "${SKYACS_APP_NAME:-}" >.env.production
 npm run build
 
 mkdir -p "$ROOT_DIR/backend/uploads/firmware"
