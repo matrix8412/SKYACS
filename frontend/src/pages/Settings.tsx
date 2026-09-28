@@ -335,7 +335,7 @@ const Settings: Component = () => {
                       <td class="py-2">
                         <button
                           onClick={() => handleToggleProv(p.id, !p.enabled)}
-                          class="btn btn-secondary"
+                          class={`btn ${p.enabled ? 'btn-secondary' : 'btn-danger'}`}
                           aria-pressed={p.enabled}
                           disabled={pendingAction() !== null}
                         >
