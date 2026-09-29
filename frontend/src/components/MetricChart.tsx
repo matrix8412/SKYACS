@@ -19,8 +19,19 @@ const BUCKET_OPTIONS: Array<{ label: string; value: string; hours: number }> = [
   { label: '365d', value: '1d', hours: 8760 },
 ];
 
+const getStoredBucket = (serial: string): typeof BUCKET_OPTIONS[number] => {
+  try {
+    const stored = localStorage.getItem(`skyacs_metric_interval_${serial}`);
+    if (stored) {
+      const found = BUCKET_OPTIONS.find((o) => o.label === stored);
+      if (found) return found;
+    }
+  } catch { /* ignore */ }
+  return BUCKET_OPTIONS[2];
+};
+
 const MetricChart: Component<MetricChartProps> = (props) => {
-  const [bucket, setBucket] = createSignal(BUCKET_OPTIONS[2]);
+  const [bucket, setBucket] = createSignal(getStoredBucket(props.serial));
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
   let chart: uPlot | null = null;
   let resizeObserver: ResizeObserver | null = null;
@@ -128,6 +139,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
 
   const handleBucketChange = (opt: typeof BUCKET_OPTIONS[number]) => {
     setBucket(opt);
+    try { localStorage.setItem(`skyacs_metric_interval_${props.serial}`, opt.label); } catch { /* ignore */ }
   };
 
   return (
