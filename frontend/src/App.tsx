@@ -16,6 +16,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const Users = lazy(() => import('./pages/Users'));
 const Delivery = lazy(() => import('./pages/Delivery'));
 const Provisioning = lazy(() => import('./pages/Provisioning'));
+const MetricsSettings = lazy(() => import('./pages/MetricsSettings'));
 
 // Initialize theme on app load
 useTheme();
@@ -49,6 +50,7 @@ const App: Component = () => {
             <Route path="/settings/users" component={Users} />
             <Route path="/settings/delivery" component={Delivery} />
             <Route path="/settings/provisioning" component={Provisioning} />
+            <Route path="/settings/metrics" component={MetricsSettings} />
           </Route>
         </Router>
       </FeedbackProvider>

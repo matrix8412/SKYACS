@@ -24,6 +24,7 @@ const navigation = [
       { href: '/settings/users', label: 'Users and Roles' },
       { href: '/settings/delivery', label: 'Delivery & Connection' },
       { href: '/settings/provisioning', label: 'Provisioning' },
+      { href: '/settings/metrics', label: 'Monitored Metrics' },
     ] },
   ] },
 ];
@@ -38,6 +39,7 @@ const pageNames: Record<string, string> = {
   '/settings/users': 'Users and Roles',
   '/settings/delivery': 'Delivery & Connection Request',
   '/settings/provisioning': 'Provisioning',
+  '/settings/metrics': 'Monitored Metrics',
 };
 
 const Brand = () => (
