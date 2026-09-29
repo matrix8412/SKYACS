@@ -39,7 +39,7 @@ func (r *ProvisioningRepository) Create(ctx context.Context, rule *models.Provis
 
 func (r *ProvisioningRepository) List(ctx context.Context) ([]*models.ProvisioningRule, error) {
 	var rules []*models.ProvisioningRule
-	if err := r.db.WithContext(ctx).Order("id").Find(&rules).Error; err != nil {
+	if err := r.db.WithContext(ctx).Order("order ASC, id ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, decryptProvisioningRules(rules)
@@ -54,7 +54,7 @@ func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, devic
 		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
 		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
 		Where("NOT EXISTS (SELECT 1 FROM provisioning_applications pa WHERE pa.rule_id = provisioning_rules.id AND pa.rule_version = provisioning_rules.version AND pa.device_id = ?)", deviceID).
-		Order("id").Find(&rules).Error; err != nil {
+		Order("order ASC, id ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, decryptProvisioningRules(rules)
@@ -85,8 +85,20 @@ func (r *ProvisioningRepository) Update(ctx context.Context, rule *models.Provis
 		return tx.Model(&models.ProvisioningRule{}).Where("id = ?", rule.ID).Updates(map[string]interface{}{
 			"parameter_name": rule.ParameterName, "parameter_value": value, "parameter_type": rule.ParameterType,
 			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "tag": rule.Tag, "enabled": rule.Enabled, "description": rule.Description,
+			"add_object_path": rule.AddObjectPath, "order": rule.Order,
 			"version": gorm.Expr("version + 1"),
 		}).Error
+	})
+}
+
+func (r *ProvisioningRepository) Reorder(ctx context.Context, orderedIDs []int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, id := range orderedIDs {
+			if err := tx.Model(&models.ProvisioningRule{}).Where("id = ?", id).Update("order", i).Error; err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 

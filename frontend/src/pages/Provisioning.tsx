@@ -35,7 +35,7 @@ const Provisioning: Component = () => {
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
-  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '', add_object_path: '' };
+  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '', add_object_path: '', order: 0 };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
 
   // Provisioning column visibility
@@ -48,6 +48,7 @@ const Provisioning: Component = () => {
   })());
   const [showProvColumnSettings, setShowProvColumnSettings] = createSignal(false);
   const [provDraggedCol, setProvDraggedCol] = createSignal<string | null>(null);
+  const [provDraggedRow, setProvDraggedRow] = createSignal<number | null>(null);
 
   onMount(() => {
     loadProvRules();
@@ -90,6 +91,39 @@ const Provisioning: Component = () => {
     setProvColumns(reordered.map((c, i) => ({ ...c, order: i })));
   };
 
+  const handleRowDragStart = (e: DragEvent, id: number) => {
+    setProvDraggedRow(id);
+    e.dataTransfer?.setData('text/plain', String(id));
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleRowDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleRowDrop = async (e: DragEvent, targetId: number) => {
+    e.preventDefault();
+    const sourceId = provDraggedRow();
+    setProvDraggedRow(null);
+    if (!sourceId || sourceId === targetId) return;
+    const rules = provRules() ?? [];
+    const sourceIdx = rules.findIndex(r => r.id === sourceId);
+    const targetIdx = rules.findIndex(r => r.id === targetId);
+    if (sourceIdx === -1 || targetIdx === -1) return;
+    const reordered = [...rules];
+    const [moved] = reordered.splice(sourceIdx, 1);
+    reordered.splice(targetIdx, 0, moved);
+    setProvRules(reordered);
+    try {
+      await api.reorderProvisioningRules(reordered.map(r => r.id));
+      notify({ tone: 'success', title: 'Rules reordered' });
+    } catch (error) {
+      notify({ tone: 'error', title: 'Reorder failed', detail: (error as Error).message, persistent: true });
+      refetchProvRules();
+    }
+  };
+
   const moveProvColumn = (id: string, direction: -1 | 1) => {
     const cols = provColumns().sort((a, b) => a.order - b.order);
     const idx = cols.findIndex(c => c.id === id);
@@ -115,9 +149,12 @@ const Provisioning: Component = () => {
   // Provisioning handlers
   const handleCreateProv = async () => {
     if (pendingAction()) return;
+    const form = provForm();
+    if (!form.parameter_name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'CWMP parameter name is required.' }); return; }
+    if (!form.add_object_path.trim() && !form.parameter_value.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Parameter value is required for rules without AddObject path.' }); return; }
     setPendingAction('create-provisioning');
     try {
-      await api.createProvisioningRule(provForm());
+      await api.createProvisioningRule(form);
       notify({ tone: 'success', title: 'Provisioning rule created', message: provForm().parameter_name });
       setShowProvModal(false);
       setProvForm({ ...emptyProvisioningRule });
@@ -129,9 +166,12 @@ const Provisioning: Component = () => {
   const handleUpdateProv = async () => {
     const p = editingProv();
     if (!p || pendingAction()) return;
+    const form = provForm();
+    if (!form.parameter_name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'CWMP parameter name is required.' }); return; }
+    if (!form.add_object_path.trim() && !form.parameter_value.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Parameter value is required for rules without AddObject path.' }); return; }
     setPendingAction('update-provisioning');
     try {
-      await api.updateProvisioningRule(p.id, provForm());
+      await api.updateProvisioningRule(p.id, form);
       notify({ tone: 'success', title: 'Provisioning rule updated', message: provForm().parameter_name });
       setShowProvModal(false);
       setEditingProv(null);
@@ -159,7 +199,7 @@ const Provisioning: Component = () => {
 
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
-    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '' });
+    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order });
     setShowProvModal(true);
   };
 
@@ -253,6 +293,7 @@ const Provisioning: Component = () => {
               <table class="w-full text-left">
                 <thead>
                   <tr class="border-b border-subtle">
+                    <th class="py-2 pr-2 w-8 text-xs font-medium text-muted uppercase tracking-wide">#</th>
                     <For each={visibleProvColumns()}>
                       {(col) => <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">{col.label}</th>}
                     </For>
@@ -261,8 +302,20 @@ const Provisioning: Component = () => {
                 </thead>
                 <tbody>
                   <For each={provRules() ?? []}>
-                    {(p) => (
-                      <tr class="border-b border-subtle/50 hover:bg-elevated/40 transition-colors">
+                    {(p, idx) => (
+                      <tr
+                        class={`border-b border-subtle/50 hover:bg-elevated/40 transition-colors ${provDraggedRow() === p.id ? 'opacity-50' : ''}`}
+                        draggable={true}
+                        onDragStart={(e) => handleRowDragStart(e, p.id)}
+                        onDragOver={handleRowDragOver}
+                        onDrop={(e) => handleRowDrop(e, p.id)}
+                      >
+                        <td class="py-2 pr-2 cursor-grab active:cursor-grabbing select-none">
+                          <span class="flex items-center gap-1 text-muted">
+                            <GripVertical size={12} />
+                            <span class="text-xs">{idx() + 1}</span>
+                          </span>
+                        </td>
                         <Show when={visibleProvColumns().some(c => c.id === 'parameter')}>
                           <td class="py-2 pr-4">
                             <span class="text-secondary text-xs font-mono">{p.parameter_name}</span>
@@ -336,16 +389,21 @@ const Provisioning: Component = () => {
           <form onSubmit={(e) => { e.preventDefault(); editingProv() ? handleUpdateProv() : handleCreateProv(); }} class="space-y-4">
             <div>
               <label for="provisioning-parameter" class="block text-xs text-muted mb-1.5">CWMP parameter name</label>
-              <input id="provisioning-parameter" type="text" value={provForm().parameter_name} onInput={(e) => setProvForm(f => ({ ...f, parameter_name: e.currentTarget.value }))} class="input w-full" placeholder="InternetGatewayDevice.WANDevice.1.WANConnectionHandling.1.ConnectionType" required />
+              <input id="provisioning-parameter" type="text" value={provForm().parameter_name} onInput={(e) => setProvForm(f => ({ ...f, parameter_name: e.currentTarget.value }))} class="input w-full" placeholder="InternetGatewayDevice.WANDevice.1.WANConnectionHandling.1.ConnectionType" />
             </div>
             <div>
               <label for="provisioning-value" class="block text-xs text-muted mb-1.5">Parameter value</label>
-              <input id="provisioning-value" type="text" value={provForm().parameter_value} onInput={(e) => setProvForm(f => ({ ...f, parameter_value: e.currentTarget.value }))} class="input w-full" placeholder="bridge" required />
+              <input id="provisioning-value" type="text" value={provForm().parameter_value} onInput={(e) => setProvForm(f => ({ ...f, parameter_value: e.currentTarget.value }))} class="input w-full" placeholder="bridge" />
             </div>
             <div>
               <label for="provisioning-add-object" class="block text-xs text-muted mb-1.5">Add Object path (optional)</label>
               <input id="provisioning-add-object" type="text" value={provForm().add_object_path} onInput={(e) => setProvForm(f => ({ ...f, add_object_path: e.currentTarget.value }))} class="input w-full" placeholder="InternetGatewayDevice.WANDevice.1.WANConnectionDevice" />
               <p class="text-xs text-muted mt-1">Creates a new object via CWMP AddObject before setting parameters. Use <code class="text-amber-400">{'{prev}'}</code> to reference the instance number from the previous AddObject. Leave empty for regular parameter rules.</p>
+            </div>
+            <div>
+              <label for="provisioning-order" class="block text-xs text-muted mb-1.5">Order</label>
+              <input id="provisioning-order" type="number" min="0" value={provForm().order} onInput={(e) => setProvForm(f => ({ ...f, order: Number(e.currentTarget.value) || 0 }))} class="input w-full" />
+              <p class="text-xs text-muted mt-1">Lower values execute first. Use drag-and-drop in the table or set explicit order here.</p>
             </div>
             <div>
               <label for="provisioning-manufacturer" class="block text-xs text-muted mb-1.5">Manufacturer (optional)</label>

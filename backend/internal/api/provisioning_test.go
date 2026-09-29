@@ -2,7 +2,10 @@ package api
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/skydashnet/skyacs/internal/models"
 )
 
 func TestNormalizeTags(t *testing.T) {
@@ -40,5 +43,114 @@ func TestValidateProvisioningRuleTag(t *testing.T) {
 	}
 	if err := base(string(make([]byte, 129))); err == nil {
 		t.Fatal("tag over 128 characters should be rejected")
+	}
+}
+
+func TestValidatePrevReferenceInList(t *testing.T) {
+	addObject := &models.ProvisioningRule{ID: 1, AddObjectPath: "InternetGatewayDevice.LANDevice.1.LANHostConfigManagement.1.Hosts.1.Host", Order: 0}
+	plainRule := &models.ProvisioningRule{ID: 2, ParameterValue: "static", Order: 1}
+
+	cases := []struct {
+		name     string
+		rules    []*models.ProvisioningRule
+		ruleID   int64
+		order    int
+		value    string
+		wantErr  bool
+		errSubstr string
+	}{
+		{
+			name:    "no {prev} in value passes",
+			rules:   []*models.ProvisioningRule{addObject},
+			ruleID:  0,
+			order:   1,
+			value:   "static-value",
+			wantErr: false,
+		},
+		{
+			name:    "create with preceding AddObject passes",
+			rules:   []*models.ProvisioningRule{addObject},
+			ruleID:  0,
+			order:   1,
+			value:   "{prev}.1",
+			wantErr: false,
+		},
+		{
+			name:    "create with same-order AddObject passes (new rule gets higher id)",
+			rules:   []*models.ProvisioningRule{addObject},
+			ruleID:  0,
+			order:   0,
+			value:   "{prev}.1",
+			wantErr: false,
+		},
+		{
+			name:    "create with no AddObject fails",
+			rules:   []*models.ProvisioningRule{plainRule},
+			ruleID:  0,
+			order:   1,
+			value:   "{prev}.1",
+			wantErr: true,
+			errSubstr: "no AddObject rule exists before it",
+		},
+		{
+			name:    "create with AddObject after fails",
+			rules:   []*models.ProvisioningRule{{ID: 10, AddObjectPath: "path", Order: 5}},
+			ruleID:  0,
+			order:   1,
+			value:   "{prev}.1",
+			wantErr: true,
+			errSubstr: "no AddObject rule exists before it",
+		},
+		{
+			name:    "update with preceding AddObject passes",
+			rules:   []*models.ProvisioningRule{addObject, {ID: 2, ParameterValue: "{prev}.1", Order: 1}},
+			ruleID:  2,
+			order:   1,
+			value:   "{prev}.1",
+			wantErr: false,
+		},
+		{
+			name:    "update with AddObject after fails",
+			rules:   []*models.ProvisioningRule{{ID: 2, ParameterValue: "{prev}.1", Order: 0}, {ID: 10, AddObjectPath: "path", Order: 1}},
+			ruleID:  2,
+			order:   0,
+			value:   "{prev}.1",
+			wantErr: true,
+			errSubstr: "no AddObject rule exists before it",
+		},
+		{
+			name:    "update excludes self even if self has AddObjectPath",
+			rules:   []*models.ProvisioningRule{{ID: 5, AddObjectPath: "path", ParameterValue: "{prev}.1", Order: 0}},
+			ruleID:  5,
+			order:   0,
+			value:   "{prev}.1",
+			wantErr: true,
+			errSubstr: "no AddObject rule exists before it",
+		},
+		{
+			name:    "empty rules list with {prev} fails",
+			rules:   []*models.ProvisioningRule{},
+			ruleID:  0,
+			order:   0,
+			value:   "{prev}.1",
+			wantErr: true,
+			errSubstr: "no AddObject rule exists before it",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validatePrevReferenceInList(tc.rules, tc.ruleID, tc.order, tc.value)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tc.errSubstr != "" && !strings.Contains(err.Error(), tc.errSubstr) {
+					t.Fatalf("error %q does not contain %q", err.Error(), tc.errSubstr)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }

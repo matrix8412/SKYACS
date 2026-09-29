@@ -159,6 +159,7 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("PUT /provisioning/{id}", auth.RequireFullAccess(r.handleUpdateProvisioningRule))
 	apiMux.HandleFunc("DELETE /provisioning/{id}", auth.RequireFullAccess(r.handleDeleteProvisioningRule))
 	apiMux.HandleFunc("POST /provisioning/{id}/toggle", auth.RequireFullAccess(r.handleToggleProvisioningRule))
+	apiMux.HandleFunc("POST /provisioning/reorder", auth.RequireFullAccess(r.handleReorderProvisioningRules))
 
 	// Metric endpoints
 	apiMux.HandleFunc("GET /metrics/definitions", r.handleListMetricDefinitions)
@@ -2014,6 +2015,37 @@ func (r *Router) handleListProvisioningRules(w http.ResponseWriter, req *http.Re
 	respondJSON(w, http.StatusOK, rules)
 }
 
+// validatePrevReferenceInList checks that a rule using {prev} in its parameter_value
+// has at least one AddObject rule preceding it in the (order, id) execution order.
+func validatePrevReferenceInList(rules []*models.ProvisioningRule, ruleID int64, order int, parameterValue string) error {
+	if !strings.Contains(parameterValue, "{prev}") {
+		return nil
+	}
+	for _, rule := range rules {
+		if rule.ID == ruleID {
+			continue
+		}
+		if rule.AddObjectPath == "" {
+			continue
+		}
+		// For create (ruleID=0): new rule gets highest id, so same-order rules precede it.
+		// For update: the AddObject rule must come strictly before by (order, id).
+		if rule.Order < order || (rule.Order == order && (ruleID == 0 || rule.ID < ruleID)) {
+			return nil
+		}
+	}
+	return fmt.Errorf("rule uses {prev} but no AddObject rule exists before it in the execution order")
+}
+
+// validatePrevReference loads all rules and delegates to validatePrevReferenceInList.
+func (r *Router) validatePrevReference(ctx context.Context, ruleID int64, order int, parameterValue string) error {
+	rules, err := r.provisioningRepo.List(ctx)
+	if err != nil {
+		return fmt.Errorf("validate {prev} reference: %w", err)
+	}
+	return validatePrevReferenceInList(rules, ruleID, order, parameterValue)
+}
+
 func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.Request) {
 	claims := auth.GetUserFromContext(req.Context())
 	if claims == nil || claims.Role != models.RoleFull {
@@ -2037,6 +2069,10 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := r.validatePrevReference(req.Context(), 0, body.Order, body.ParameterValue); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if body.ParameterType == "" {
 		body.ParameterType = "string"
@@ -2056,6 +2092,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		Enabled:        body.Enabled,
 		Description:    body.Description,
 		AddObjectPath:  strings.TrimSpace(body.AddObjectPath),
+		Order:          body.Order,
 	}
 
 	if err := r.provisioningRepo.Create(req.Context(), rule); err != nil {
@@ -2092,6 +2129,10 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		return
 	}
 	if err := validateAddObjectPath(body.AddObjectPath); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := r.validatePrevReference(req.Context(), id, body.Order, body.ParameterValue); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2195,4 +2236,33 @@ func (r *Router) handleToggleProvisioningRule(w http.ResponseWriter, req *http.R
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "toggled"})
+}
+
+func (r *Router) handleReorderProvisioningRules(w http.ResponseWriter, req *http.Request) {
+	claims := auth.GetUserFromContext(req.Context())
+	if claims == nil || claims.Role != models.RoleFull {
+		respondError(w, http.StatusForbidden, "Full access required")
+		return
+	}
+
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		respondError(w, http.StatusBadRequest, "IDs list is required")
+		return
+	}
+
+	if err := r.provisioningRepo.Reorder(req.Context(), body.IDs); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to reorder rules")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "reordered"})
 }
