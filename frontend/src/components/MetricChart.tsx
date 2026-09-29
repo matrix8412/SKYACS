@@ -67,8 +67,6 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       if (chart) { chart.destroy(); chart = null; }
       return;
     }
-    console.log('[MetricChart] renderChart', { width: chartEl()!.clientWidth, seriesLen: s.series.length, points: s.series[0].length });
-
     const isAggregated = s.series.length > 2;
     const specs: uPlot.Series[] = [
       { label: 'Time' },
@@ -82,13 +80,13 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     }
 
     const opts: uPlot.Options = {
-      width: chartEl()!.clientWidth,
+      width: chartEl()!.clientWidth || 600,
       height: 200,
       series: specs,
       cursor: { drag: { x: true, y: false } },
       scales: {
-        time: { time: true },
-        value: { auto: true },
+        x: { time: true },
+        y: { auto: true },
       },
       axes: [
         {
