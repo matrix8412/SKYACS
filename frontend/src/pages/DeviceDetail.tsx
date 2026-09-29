@@ -30,10 +30,9 @@ const DeviceDetail: Component = () => {
   const [wifiEdits, setWifiEdits] = createSignal<Record<string, string>>({});
   const [editingPPP, setEditingPPP] = createSignal<number | null>(null);
   const [pppEdits, setPPPEdits] = createSignal<Record<string, string>>({});
-  const [refreshInterval, setRefreshInterval] = createSignal<number>(() => {
-    const stored = localStorage.getItem(`skyacs_auto_refresh_${params.serial}`);
-    return stored ? parseInt(stored, 10) : 30_000;
-  });
+  const [refreshInterval, setRefreshInterval] = createSignal<number>(
+    parseInt(localStorage.getItem(`skyacs_auto_refresh_${params.serial}`) ?? '30000', 10)
+  );
   const [selectedParam, setSelectedParam] = createSignal<{ name: string; value: string } | null>(null);
   const [editingModemCreds, setEditingModemCreds] = createSignal(false);
   const [showSensitive, setShowSensitive] = createSignal(false);
