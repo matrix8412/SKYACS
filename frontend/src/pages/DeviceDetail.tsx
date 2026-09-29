@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js';
-import { createResource, createSignal, Show, For, createEffect, createMemo, onMount, onCleanup } from 'solid-js';
-import { useParams, A, useNavigate } from '@solidjs/router';
+import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup } from 'solid-js';
+import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
 import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity } from 'lucide-solid';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -15,6 +15,8 @@ const DeviceDetail: Component = () => {
   const { isFullAccess } = useAuth();
   const { confirm } = useFeedback();
   const serial = () => params.serial || '';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = () => searchParams.tab === 'metrics' || searchParams.tab === 'tasks' ? searchParams.tab : 'overview';
 
   const [device, { refetch: refetchDevice }] = createResource(serial, api.getDevice);
   const [parameters, { refetch: refetchParams }] = createResource(serial, api.getDeviceParameters);
@@ -28,7 +30,10 @@ const DeviceDetail: Component = () => {
   const [wifiEdits, setWifiEdits] = createSignal<Record<string, string>>({});
   const [editingPPP, setEditingPPP] = createSignal<number | null>(null);
   const [pppEdits, setPPPEdits] = createSignal<Record<string, string>>({});
-  const [autoRefresh] = createSignal(true);
+  const [refreshInterval, setRefreshInterval] = createSignal<number>(() => {
+    const stored = localStorage.getItem(`skyacs_auto_refresh_${params.serial}`);
+    return stored ? parseInt(stored, 10) : 30_000;
+  });
   const [selectedParam, setSelectedParam] = createSignal<{ name: string; value: string } | null>(null);
   const [editingModemCreds, setEditingModemCreds] = createSignal(false);
   const [showSensitive, setShowSensitive] = createSignal(false);
@@ -84,14 +89,16 @@ const DeviceDetail: Component = () => {
     setFactoryResetPassword('');
   };
 
-  onMount(() => {
-		const interval = setInterval(() => {
-			if (autoRefresh() && document.visibilityState === 'visible') {
+  createEffect(() => {
+    const intervalMs = refreshInterval();
+    if (intervalMs <= 0) return;
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
         refetchDevice();
         refetchParams();
         refetchTasks();
       }
-		}, 30_000);
+    }, intervalMs);
     onCleanup(() => clearInterval(interval));
   });
 
@@ -757,7 +764,7 @@ const DeviceDetail: Component = () => {
             <p class="text-sm text-muted mt-0.5">{device()?.manufacturer} {device()?.product_class}</p>
           </Show>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 items-center">
           <Show when={isFullAccess()}><button onClick={handleSummon} disabled={actionLoading() !== null} class="btn btn-primary text-xs sm:text-sm">
             <Zap size={14} />
             <span class="hidden sm:inline">{actionLoading() === 'summon' ? '...' : 'Summon'}</span>
@@ -766,8 +773,29 @@ const DeviceDetail: Component = () => {
             <RefreshCw size={14} />
             <span class="hidden sm:inline">Refresh</span>
           </button>
+          <select
+            class="input text-xs py-1 w-auto"
+            value={String(refreshInterval())}
+            onChange={(e) => {
+              const val = parseInt(e.currentTarget.value, 10);
+              setRefreshInterval(val);
+              localStorage.setItem(`skyacs_auto_refresh_${serial()}`, String(val));
+            }}
+            aria-label="Auto-refresh interval"
+          >
+            <option value="0">Off</option>
+            <option value="10000">10 s</option>
+            <option value="30000">30 s</option>
+            <option value="60000">60 s</option>
+          </select>
         </div>
       </div>
+
+      <nav role="tablist" class="tab-bar" aria-label="Device detail sections">
+        <button role="tab" class={`tab-btn ${activeTab() === 'overview' ? 'is-active' : ''}`} aria-selected={activeTab() === 'overview'} onClick={() => setSearchParams({ tab: null })}>Overview</button>
+        <button role="tab" class={`tab-btn ${activeTab() === 'metrics' ? 'is-active' : ''}`} aria-selected={activeTab() === 'metrics'} onClick={() => setSearchParams({ tab: 'metrics' })}>Metrics</button>
+        <button role="tab" class={`tab-btn ${activeTab() === 'tasks' ? 'is-active' : ''}`} aria-selected={activeTab() === 'tasks'} onClick={() => setSearchParams({ tab: 'tasks' })}>Tasks</button>
+      </nav>
 
       <Show when={message()}>
         <div role={message()?.type === 'error' ? 'alert' : 'status'} class={`p-3 rounded-md text-sm ${message()?.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}`}>
@@ -799,6 +827,7 @@ const DeviceDetail: Component = () => {
       <Show when={!device.loading && !device.error && device()}>
         {(d) => (
           <>
+            <Show when={activeTab() === 'overview'}>
             {/* Row 1: ONT Info + Device Health + Actions */}
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
               {/* ONT Information Card */}
@@ -911,8 +940,11 @@ const DeviceDetail: Component = () => {
               </div></Show>
             </div>
 
+            </Show>
+
             {/* Row 1.2: Metrics */}
-            <Show when={matchingMetrics().length > 0}>
+            <Show when={activeTab() === 'metrics'}>
+              <Show when={matchingMetrics().length > 0} fallback={<EmptyState title="No metrics available" description="No active metric definitions match this device type. Configure metric definitions in the admin panel to enable monitoring." />}>
               <div class="card p-5">
                 <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
                   <Activity size={14} />
@@ -926,8 +958,10 @@ const DeviceDetail: Component = () => {
                   </For>
                 </div>
               </div>
+              </Show>
             </Show>
 
+            <Show when={activeTab() === 'overview'}>
             {/* Row 1.5: Modem Credentials */}
             <div class="card p-5">
               <div class="flex items-center justify-between mb-4">
@@ -1319,8 +1353,10 @@ const DeviceDetail: Component = () => {
                 </Show>
               </Show>
             </div>
+            </Show>
 
             {/* Row 5: Task History */}
+            <Show when={activeTab() === 'tasks'}>
             <div class="card overflow-hidden">
               <div class="p-5 border-b border-subtle">
                 <h2 class="text-sm font-medium text-secondary">Task History ({tasks()?.length || 0})</h2>
@@ -1354,7 +1390,9 @@ const DeviceDetail: Component = () => {
               </Show>
               </Show>
             </div>
+            </Show>
 
+            <Show when={activeTab() === 'overview'}>
             {/* Row 6: All Parameters */}
             <div class="card overflow-hidden">
               <div class="p-5 border-b border-subtle flex items-center justify-between">
@@ -1400,6 +1438,7 @@ const DeviceDetail: Component = () => {
                 </div>
               </Show>
             </div>
+            </Show>
           </>
         )}
       </Show>
