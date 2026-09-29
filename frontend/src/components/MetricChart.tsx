@@ -36,6 +36,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   let chart: uPlot | null = null;
   let resizeObserver: ResizeObserver | null = null;
   let rafId: number | null = null;
+  let tooltipEl: HTMLDivElement | null = null;
 
   const [data] = createResource(
     () => ({ serial: props.serial, metricId: props.metric.id, bucket: bucket().value, hours: bucket().hours }),
@@ -70,12 +71,12 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     const isAggregated = s.series.length > 2;
     const specs: uPlot.Series[] = [
       { label: 'Time' },
-      { label: props.metric.name + (props.metric.unit ? ` (${props.metric.unit})` : ''), stroke: '#38bdf8', width: 2, fill: 'rgba(56,189,248,0.08)' },
+      { label: props.metric.name + (props.metric.unit ? ` (${props.metric.unit})` : ''), stroke: '#38bdf8', width: 2, fill: 'rgba(56,189,248,0.08)', points: { show: true, size: 4 } },
     ];
     if (isAggregated) {
       specs.push(
-        { label: 'Min', stroke: 'rgba(56,189,248,0.3)', width: 1, fill: 'rgba(56,189,248,0.04)' },
-        { label: 'Max', stroke: 'rgba(56,189,248,0.3)', width: 1, fill: 'rgba(56,189,248,0.04)' },
+        { label: 'Min', stroke: 'rgba(56,189,248,0.3)', width: 1, fill: 'rgba(56,189,248,0.04)', points: { show: true, size: 3 } },
+        { label: 'Max', stroke: 'rgba(56,189,248,0.3)', width: 1, fill: 'rgba(56,189,248,0.04)', points: { show: true, size: 3 } },
       );
     }
 
@@ -83,7 +84,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       width: chartEl()!.clientWidth || 600,
       height: 200,
       series: specs,
-      cursor: { drag: { x: true, y: false } },
+      cursor: { drag: { x: true, y: false }, points: true },
       scales: {
         x: { time: true },
         y: { auto: true },
@@ -108,6 +109,30 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       ],
       legend: { show: false },
       padding: [0, 0, 0, 0],
+      hooks: {
+        setCursor: [(self: uPlot) => {
+          const idx = self.cursor.idx;
+          if (idx == null || !tooltipEl) {
+            if (tooltipEl) tooltipEl.style.display = 'none';
+            return;
+          }
+          const ts = self.data[0][idx];
+          const val = self.data[1][idx];
+          const date = new Date(ts * 1000);
+          const timeStr = date.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
+          const dateStr = date.toLocaleDateString('sk-SK', { day: 'numeric', month: 'numeric' });
+          const unit = props.metric.unit ? ` ${props.metric.unit}` : '';
+          tooltipEl!.textContent = `${dateStr} ${timeStr} · ${val}${unit}`;
+          tooltipEl!.style.display = 'block';
+
+          const xPos = self.valToPos(ts, 'x', true);
+          const yPos = self.valToPos(val, 'y', true);
+          const left = Math.max(0, Math.min(xPos, self.width - 120));
+          const top = Math.max(0, yPos - 30);
+          tooltipEl!.style.left = `${left}px`;
+          tooltipEl!.style.top = `${top}px`;
+        }],
+      },
     };
 
     if (chart) {
@@ -118,6 +143,14 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       resizeObserver.disconnect();
       resizeObserver = null;
     }
+    if (tooltipEl) {
+      tooltipEl.remove();
+      tooltipEl = null;
+    }
+
+    tooltipEl = document.createElement('div');
+    tooltipEl.style.cssText = 'position:absolute;display:none;pointer-events:none;background:rgba(15,23,42,0.9);color:#e2e8f0;font:11px "IBM Plex Mono",monospace;padding:4px 8px;border-radius:4px;white-space:nowrap;z-index:10;';
+    chartEl()!.appendChild(tooltipEl);
 
     chart = new uPlot(opts, s.series as any, chartEl()!);
 
@@ -146,6 +179,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     if (rafId) cancelAnimationFrame(rafId);
     if (resizeObserver) resizeObserver.disconnect();
     if (chart) chart.destroy();
+    if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
   });
 
   const handleBucketChange = (opt: typeof BUCKET_OPTIONS[number]) => {
@@ -182,7 +216,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
         </div>
       </Show>
       <Show when={!data.loading && !data.error && seriesData()}>
-        <div ref={setChartEl} class="w-full h-[200px]" />
+        <div ref={setChartEl} class="w-full h-[200px] relative overflow-hidden" />
       </Show>
       <Show when={!data.loading && !data.error && !seriesData()}>
         <div class="text-xs text-muted h-[200px] flex flex-col items-center justify-center gap-1">
