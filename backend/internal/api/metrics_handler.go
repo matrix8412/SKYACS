@@ -162,6 +162,16 @@ func (r *Router) handleGetDeviceMetrics(w http.ResponseWriter, req *http.Request
 		respondError(w, http.StatusInternalServerError, "Failed to query aggregated metrics")
 		return
 	}
+
+	// Fallback: if the CA returned no rows (e.g. not yet refreshed), try raw samples.
+	if len(rows) == 0 {
+		samples, rawErr := r.metricRepo.QueryRaw(req.Context(), device.ID, metricID, from, to)
+		if rawErr == nil && len(samples) > 0 {
+			respondJSON(w, http.StatusOK, map[string]interface{}{"samples": samples})
+			return
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{"aggregates": rows})
 }
 

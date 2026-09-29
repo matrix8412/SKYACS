@@ -16,6 +16,7 @@ const BUCKET_OPTIONS: Array<{ label: string; value: string; hours: number }> = [
   { label: '24h', value: '5min', hours: 24 },
   { label: '7d', value: '1h', hours: 168 },
   { label: '30d', value: '1d', hours: 720 },
+  { label: '365d', value: '1d', hours: 8760 },
 ];
 
 const MetricChart: Component<MetricChartProps> = (props) => {
@@ -161,8 +162,9 @@ const MetricChart: Component<MetricChartProps> = (props) => {
         <div ref={setChartEl} class="w-full h-[200px]" />
       </Show>
       <Show when={!data.loading && !data.error && data() && !buildSeries()}>
-        <div class="text-xs text-muted h-[200px] flex items-center justify-center">
-          No data collected yet
+        <div class="text-xs text-muted h-[200px] flex flex-col items-center justify-center gap-1">
+          <span>No data collected yet</span>
+          <span class="text-[10px] opacity-60">Waiting for device Inform with matching parameters</span>
         </div>
       </Show>
     </div>

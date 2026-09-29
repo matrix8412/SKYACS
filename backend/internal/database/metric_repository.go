@@ -262,6 +262,16 @@ func SetupTimescaleDB(db *gorm.DB) error {
 			timescaledb.compress_orderby = 'timestamp DESC'
 		)`,
 		`SELECT add_compression_policy('metric_samples', INTERVAL '2 hours', if_not_exists => TRUE)`,
+
+		// Continuous aggregate refresh policies — without these the CAs stay empty.
+		`SELECT add_continuous_aggregate_policy('metric_samples_5min', start_offset => INTERVAL '7 days', end_offset => INTERVAL '5 minutes', schedule_interval => INTERVAL '5 minutes', if_not_exists => TRUE)`,
+		`SELECT add_continuous_aggregate_policy('metric_samples_1h', start_offset => INTERVAL '30 days', end_offset => INTERVAL '1 hour', schedule_interval => INTERVAL '1 hour', if_not_exists => TRUE)`,
+		`SELECT add_continuous_aggregate_policy('metric_samples_1d', start_offset => INTERVAL '365 days', end_offset => INTERVAL '1 day', schedule_interval => INTERVAL '1 day', if_not_exists => TRUE)`,
+
+		// One-time backfill: refresh any data that accumulated before the policy existed.
+		`SELECT refresh_continuous_aggregate('metric_samples_5min', NULL, NULL)`,
+		`SELECT refresh_continuous_aggregate('metric_samples_1h', NULL, NULL)`,
+		`SELECT refresh_continuous_aggregate('metric_samples_1d', NULL, NULL)`,
 	}
 
 	for _, stmt := range statements {
