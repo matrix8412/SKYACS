@@ -35,6 +35,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
   let chart: uPlot | null = null;
   let resizeObserver: ResizeObserver | null = null;
+  let rafId: number | null = null;
 
   const [data] = createResource(
     () => ({ serial: props.serial, metricId: props.metric.id, bucket: bucket().value, hours: bucket().hours }),
@@ -66,6 +67,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       if (chart) { chart.destroy(); chart = null; }
       return;
     }
+    console.log('[MetricChart] renderChart', { width: chartEl()!.clientWidth, seriesLen: s.series.length, points: s.series[0].length });
 
     const isAggregated = s.series.length > 2;
     const specs: uPlot.Series[] = [
@@ -114,6 +116,10 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       chart.destroy();
       chart = null;
     }
+    if (resizeObserver) {
+      resizeObserver.disconnect();
+      resizeObserver = null;
+    }
 
     chart = new uPlot(opts, s.series as any, chartEl()!);
 
@@ -131,10 +137,15 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     const el = chartEl();
     const s = seriesData();
     if (!el || !s) return;
-    renderChart();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      rafId = null;
+      renderChart();
+    });
   });
 
   onCleanup(() => {
+    if (rafId) cancelAnimationFrame(rafId);
     if (resizeObserver) resizeObserver.disconnect();
     if (chart) chart.destroy();
   });
