@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -38,7 +39,11 @@ func (r *SettingsRepository) GetAll(ctx context.Context) ([]Setting, error) {
 		if isSensitiveSettingKey(settings[index].Key) {
 			value, err := decryptParameterValue(settings[index].Value)
 			if err != nil {
-				return nil, fmt.Errorf("decrypt setting %s: %w", settings[index].Key, err)
+				// A key rotation or stale volume can leave an undecryptable
+				// value. Log and keep the raw ciphertext so the API still
+				// responds; the operator can overwrite the field to recover.
+				log.Printf("Warning: cannot decrypt setting %s: %v", settings[index].Key, err)
+				continue
 			}
 			settings[index].Value = value
 		}
@@ -58,9 +63,10 @@ func (r *SettingsRepository) Get(ctx context.Context, key string) (*Setting, err
 	if isSensitiveSettingKey(s.Key) {
 		value, decryptErr := decryptParameterValue(s.Value)
 		if decryptErr != nil {
-			return nil, fmt.Errorf("decrypt setting %s: %w", s.Key, decryptErr)
+			log.Printf("Warning: cannot decrypt setting %s: %v", s.Key, decryptErr)
+		} else {
+			s.Value = value
 		}
-		s.Value = value
 	}
 	return &s, nil
 }
