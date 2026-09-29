@@ -336,6 +336,7 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 
 	session := h.sessions.GetOrCreate(remoteAddr, inform.DeviceId.SerialNumber)
 	session.mu.Lock()
+	isNewSession := session.State == StateWaitingInform
 	session.State = StateInformReceived
 	session.DeviceID = deviceID
 	session.DeviceType = inform.DeviceId.Manufacturer + "/" + inform.DeviceId.ProductClass
@@ -343,9 +344,10 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	session.CWMPNamespace = envelope.CWMPNamespace
 	session.Provisioning = provisioning
 	session.ProvisioningRules = provisioningRules
-	// Full-tree discovery is intentionally limited to BOOTSTRAP. PERIODIC
-	// informs already carry telemetry and must stay cheap for large fleets.
-	session.AutoFetchReady = hasBootstrap
+	// Full-tree discovery on BOOTSTRAP or on a brand-new session (e.g. after
+	// ACS restart) so WAN/WiFi/health data is always available. PERIODIC
+	// informs on an existing session stay cheap for large fleets.
+	session.AutoFetchReady = hasBootstrap || isNewSession
 	// Active metric polling: schedule a GPV fetch if the interval has elapsed.
 	if h.metricRepo != nil && deviceID > 0 && h.metricPollInterval > 0 {
 		if time.Since(session.LastMetricFetch) >= h.metricPollInterval {

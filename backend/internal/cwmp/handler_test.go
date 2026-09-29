@@ -46,3 +46,85 @@ func TestInformIsAcknowledgedBeforeACSRequest(t *testing.T) {
 		t.Fatalf("ACS request was not dispatched after empty POST: status=%d body=%s", emptyRecorder.Code, emptyRecorder.Body.String())
 	}
 }
+
+// TestPeriodicInformOnNewSessionTriggersAutoFetch verifies that a PERIODIC
+// event on a brand-new session (e.g. after an ACS restart) still triggers the
+// full-tree parameter fetch so WAN/WiFi/health data is available.
+func TestPeriodicInformOnNewSessionTriggersAutoFetch(t *testing.T) {
+	handler := NewHandler(nil)
+	inform := `<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
+  <soap:Header><cwmp:ID soap:mustUnderstand="1">inform-periodic</cwmp:ID></soap:Header>
+  <soap:Body><cwmp:Inform>
+    <DeviceId><Manufacturer>Huawei</Manufacturer><OUI>001122</OUI><ProductClass>EG8145V5</ProductClass><SerialNumber>HW-PERIODIC-1</SerialNumber></DeviceId>
+    <Event><EventStruct><EventCode>4 PERIODIC</EventCode><CommandKey></CommandKey></EventStruct></Event>
+    <MaxEnvelopes>1</MaxEnvelopes><CurrentTime>2026-09-29T06:20:00Z</CurrentTime><RetryCount>0</RetryCount>
+    <ParameterList><ParameterValueStruct><Name>InternetGatewayDevice.DeviceInfo.SerialNumber</Name><Value>HW-PERIODIC-1</Value></ParameterValueStruct></ParameterList>
+  </cwmp:Inform></soap:Body>
+</soap:Envelope>`
+
+	request := httptest.NewRequest(http.MethodPost, "http://acs.test/", strings.NewReader(inform))
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected Inform status %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	cookies := recorder.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("CWMP session cookie was not set")
+	}
+	emptyRequest := httptest.NewRequest(http.MethodPost, "http://acs.test/", nil)
+	emptyRequest.AddCookie(cookies[0])
+	emptyRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(emptyRecorder, emptyRequest)
+	if emptyRecorder.Code != http.StatusOK || !strings.Contains(emptyRecorder.Body.String(), "GetParameterValues") {
+		t.Fatalf("full-tree fetch was not dispatched for new-session PERIODIC inform: status=%d body=%s", emptyRecorder.Code, emptyRecorder.Body.String())
+	}
+}
+
+// TestPeriodicInformOnExistingSessionDoesNotReTriggerAutoFetch verifies that
+// after the AutoFetch is consumed, a subsequent empty POST on the same session
+// does NOT re-trigger the full-tree fetch (keeps periodic informs cheap).
+func TestPeriodicInformOnExistingSessionDoesNotReTriggerAutoFetch(t *testing.T) {
+	handler := NewHandler(nil)
+	inform := `<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
+  <soap:Header><cwmp:ID soap:mustUnderstand="1">inform-1</cwmp:ID></soap:Header>
+  <soap:Body><cwmp:Inform>
+    <DeviceId><Manufacturer>Huawei</Manufacturer><OUI>001122</OUI><ProductClass>EG8145V5</ProductClass><SerialNumber>HW-EXISTING-1</SerialNumber></DeviceId>
+    <Event><EventStruct><EventCode>4 PERIODIC</EventCode><CommandKey></CommandKey></EventStruct></Event>
+    <MaxEnvelopes>1</MaxEnvelopes><CurrentTime>2026-09-29T06:20:00Z</CurrentTime><RetryCount>0</RetryCount>
+    <ParameterList><ParameterValueStruct><Name>InternetGatewayDevice.DeviceInfo.SerialNumber</Name><Value>HW-EXISTING-1</Value></ParameterValueStruct></ParameterList>
+  </cwmp:Inform></soap:Body>
+</soap:Envelope>`
+
+	req1 := httptest.NewRequest(http.MethodPost, "http://acs.test/", strings.NewReader(inform))
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first Inform failed: %d", rec1.Code)
+	}
+	cookies := rec1.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("session cookie not set")
+	}
+
+	// Consume the AutoFetch (empty POST → GetParameterValues)
+	emptyReq := httptest.NewRequest(http.MethodPost, "http://acs.test/", nil)
+	emptyReq.AddCookie(cookies[0])
+	emptyRec := httptest.NewRecorder()
+	handler.ServeHTTP(emptyRec, emptyReq)
+	if !strings.Contains(emptyRec.Body.String(), "GetParameterValues") {
+		t.Fatalf("expected GetParameterValues on first empty POST, got: %s", emptyRec.Body.String())
+	}
+
+	// Second empty POST on the same session: AutoFetch already consumed.
+	emptyReq2 := httptest.NewRequest(http.MethodPost, "http://acs.test/", nil)
+	emptyReq2.AddCookie(cookies[0])
+	emptyRec2 := httptest.NewRecorder()
+	handler.ServeHTTP(emptyRec2, emptyReq2)
+	if strings.Contains(emptyRec2.Body.String(), "GetParameterValues") {
+		t.Fatalf("AutoFetch was re-triggered on existing session: %s", emptyRec2.Body.String())
+	}
+}
