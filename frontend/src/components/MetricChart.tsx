@@ -84,7 +84,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       width: chartEl()!.clientWidth || 600,
       height: 200,
       series: specs,
-      cursor: { drag: { x: true, y: false }, points: true },
+      cursor: { drag: { x: true, y: false } },
       scales: {
         x: { time: true },
         y: { auto: true },
@@ -118,6 +118,10 @@ const MetricChart: Component<MetricChartProps> = (props) => {
           }
           const ts = self.data[0][idx];
           const val = self.data[1][idx];
+          if (val == null) {
+            if (tooltipEl) tooltipEl.style.display = 'none';
+            return;
+          }
           const date = new Date(ts * 1000);
           const timeStr = date.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
           const dateStr = date.toLocaleDateString('sk-SK', { day: 'numeric', month: 'numeric' });
