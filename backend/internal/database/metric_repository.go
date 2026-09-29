@@ -267,11 +267,6 @@ func SetupTimescaleDB(db *gorm.DB) error {
 		`SELECT add_continuous_aggregate_policy('metric_samples_5min', start_offset => INTERVAL '7 days', end_offset => INTERVAL '5 minutes', schedule_interval => INTERVAL '5 minutes', if_not_exists => TRUE)`,
 		`SELECT add_continuous_aggregate_policy('metric_samples_1h', start_offset => INTERVAL '30 days', end_offset => INTERVAL '1 hour', schedule_interval => INTERVAL '1 hour', if_not_exists => TRUE)`,
 		`SELECT add_continuous_aggregate_policy('metric_samples_1d', start_offset => INTERVAL '365 days', end_offset => INTERVAL '1 day', schedule_interval => INTERVAL '1 day', if_not_exists => TRUE)`,
-
-		// One-time backfill: refresh any data that accumulated before the policy existed.
-		`SELECT refresh_continuous_aggregate('metric_samples_5min', NULL, NULL)`,
-		`SELECT refresh_continuous_aggregate('metric_samples_1h', NULL, NULL)`,
-		`SELECT refresh_continuous_aggregate('metric_samples_1d', NULL, NULL)`,
 	}
 
 	for _, stmt := range statements {
@@ -280,6 +275,14 @@ func SetupTimescaleDB(db *gorm.DB) error {
 		}
 	}
 	log.Println("TimescaleDB setup completed (hypertable, CAs, retention, compression)")
+
+	// One-time backfill: refresh any data that accumulated before the policy existed.
+	// Non-fatal — a fresh DB or lock contention should not prevent startup.
+	for _, ca := range []string{"metric_samples_5min", "metric_samples_1h", "metric_samples_1d"} {
+		if err := db.Exec(fmt.Sprintf("SELECT refresh_continuous_aggregate('%s', NULL, NULL)", ca)).Error; err != nil {
+			log.Printf("WARNING: backfill %s failed (non-fatal): %v", ca, err)
+		}
+	}
 	return nil
 }
 
