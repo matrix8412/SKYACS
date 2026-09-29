@@ -1,5 +1,5 @@
 import type { Component } from 'solid-js';
-import { createSignal, createResource, createEffect, onCleanup, Show } from 'solid-js';
+import { createSignal, createResource, createEffect, createMemo, onCleanup, Show } from 'solid-js';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { api, type MetricDefinition } from '../lib/api';
@@ -41,7 +41,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     (q) => api.getDeviceMetrics(q.serial, q.metricId, q.bucket, q.hours),
   );
 
-  const buildSeries = () => {
+  const seriesData = createMemo(() => {
     const d = data();
     if (!d) return null;
     if (d.aggregates && d.aggregates.length > 0) {
@@ -57,11 +57,11 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       return { times, series: [null, vals] as (number[] | null)[] };
     }
     return null;
-  };
+  });
 
   const renderChart = () => {
     if (!chartEl()) return;
-    const s = buildSeries();
+    const s = seriesData();
     if (!s) {
       if (chart) { chart.destroy(); chart = null; }
       return;
@@ -128,7 +128,9 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   };
 
   createEffect(() => {
-    data();
+    const el = chartEl();
+    const s = seriesData();
+    if (!el || !s) return;
     renderChart();
   });
 
@@ -170,10 +172,10 @@ const MetricChart: Component<MetricChartProps> = (props) => {
           Failed to load metric data
         </div>
       </Show>
-      <Show when={!data.loading && !data.error && data() && buildSeries()}>
+      <Show when={!data.loading && !data.error && seriesData()}>
         <div ref={setChartEl} class="w-full h-[200px]" />
       </Show>
-      <Show when={!data.loading && !data.error && data() && !buildSeries()}>
+      <Show when={!data.loading && !data.error && !seriesData()}>
         <div class="text-xs text-muted h-[200px] flex flex-col items-center justify-center gap-1">
           <span>No data collected yet</span>
           <span class="text-[10px] opacity-60">Waiting for device Inform with matching parameters</span>
