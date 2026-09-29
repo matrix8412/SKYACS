@@ -78,17 +78,25 @@ func (r *MetricRepository) ExtractAndStore(ctx context.Context, deviceID int64, 
 
 	now := time.Now()
 	var samples []models.MetricSample
+	matched := 0
+	missed := 0
 
 	for _, def := range defs {
 		if !deviceTypeMatches(deviceType, def.DeviceTypeMatch) {
 			continue
 		}
+		matched++
 		value, ok := paramMap[def.ParameterName]
 		if !ok || value == "" {
+			missed++
+			log.Printf("Metric %q (id=%d): parameter %q not found in %d Inform params for device %d (%s)",
+				def.Name, def.ID, def.ParameterName, len(paramMap), deviceID, deviceType)
 			continue
 		}
 		fv, err := strconv.ParseFloat(value, 64)
 		if err != nil || math.IsNaN(fv) || math.IsInf(fv, 0) {
+			missed++
+			log.Printf("Metric %q (id=%d): value %q for param %q is not numeric", def.Name, def.ID, value, def.ParameterName)
 			continue
 		}
 		samples = append(samples, models.MetricSample{
@@ -100,6 +108,10 @@ func (r *MetricRepository) ExtractAndStore(ctx context.Context, deviceID int64, 
 	}
 
 	if len(samples) == 0 {
+		if matched > 0 {
+			log.Printf("No metric samples stored for device %d (%s): %d defs matched device type, %d params available, %d missed",
+				deviceID, deviceType, matched, len(paramMap), missed)
+		}
 		return nil
 	}
 	if err := r.BatchInsert(ctx, samples); err != nil {
