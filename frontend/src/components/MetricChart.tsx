@@ -49,12 +49,12 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       const avgs = d.aggregates.map((a) => a.avg);
       const mins = d.aggregates.map((a) => a.min);
       const maxs = d.aggregates.map((a) => a.max);
-      return { times, series: [null, avgs, mins, maxs] as (number[] | null)[] };
+      return { series: [times, avgs, mins, maxs] as number[][] };
     }
     if (d.samples && d.samples.length > 0) {
       const times = d.samples.map((s) => new Date(s.timestamp).getTime() / 1000);
       const vals = d.samples.map((s) => s.value);
-      return { times, series: [null, vals] as (number[] | null)[] };
+      return { series: [times, vals] as number[][] };
     }
     return null;
   });
