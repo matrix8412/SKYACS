@@ -31,6 +31,11 @@ type Session struct {
 	Provisioning      *SetParameterValues
 	ProvisioningRules []models.ProvisioningApplication
 
+	// AddObject queue for creating new objects before SetParameterValues
+	AddObjectQueue  []*AddObject
+	AddObjectPhase  int
+	LastInstanceNum string
+
 	// Metric collection state
 	DeviceType        string
 	MetricFetchReady  bool

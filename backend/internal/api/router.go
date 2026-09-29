@@ -2033,6 +2033,10 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := validateAddObjectPath(body.AddObjectPath); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	if body.ParameterType == "" {
 		body.ParameterType = "string"
@@ -2051,6 +2055,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		Tag:            strings.ToLower(strings.TrimSpace(body.Tag)),
 		Enabled:        body.Enabled,
 		Description:    body.Description,
+		AddObjectPath:  strings.TrimSpace(body.AddObjectPath),
 	}
 
 	if err := r.provisioningRepo.Create(req.Context(), rule); err != nil {
@@ -2083,6 +2088,10 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		return
 	}
 	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := validateAddObjectPath(body.AddObjectPath); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2119,6 +2128,19 @@ func validateProvisioningRule(name, value, valueType, phase, manufacturer, produ
 	}
 	if len(description) > 2048 || strings.ContainsRune(description, '\x00') {
 		return errors.New("provisioning description is invalid or exceeds 2048 characters")
+	}
+	return nil
+}
+
+func validateAddObjectPath(path string) error {
+	if path == "" {
+		return nil
+	}
+	if len(path) > 512 {
+		return errors.New("add_object_path exceeds 512 characters")
+	}
+	if err := validateParameterNames([]string{path}); err != nil {
+		return fmt.Errorf("invalid add_object_path: %w", err)
 	}
 	return nil
 }

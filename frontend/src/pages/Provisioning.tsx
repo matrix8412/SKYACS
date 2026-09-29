@@ -35,7 +35,7 @@ const Provisioning: Component = () => {
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
-  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '' };
+  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '', add_object_path: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
 
   // Provisioning column visibility
@@ -159,7 +159,7 @@ const Provisioning: Component = () => {
 
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
-    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description });
+    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '' });
     setShowProvModal(true);
   };
 
@@ -266,6 +266,9 @@ const Provisioning: Component = () => {
                         <Show when={visibleProvColumns().some(c => c.id === 'parameter')}>
                           <td class="py-2 pr-4">
                             <span class="text-secondary text-xs font-mono">{p.parameter_name}</span>
+                            <Show when={p.add_object_path}>
+                              <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 ml-1.5">AddObject</span>
+                            </Show>
                             <Show when={p.description}>
                               <p class="text-muted text-xs">{p.description}</p>
                             </Show>
@@ -338,6 +341,11 @@ const Provisioning: Component = () => {
             <div>
               <label for="provisioning-value" class="block text-xs text-muted mb-1.5">Parameter value</label>
               <input id="provisioning-value" type="text" value={provForm().parameter_value} onInput={(e) => setProvForm(f => ({ ...f, parameter_value: e.currentTarget.value }))} class="input w-full" placeholder="bridge" required />
+            </div>
+            <div>
+              <label for="provisioning-add-object" class="block text-xs text-muted mb-1.5">Add Object path (optional)</label>
+              <input id="provisioning-add-object" type="text" value={provForm().add_object_path} onInput={(e) => setProvForm(f => ({ ...f, add_object_path: e.currentTarget.value }))} class="input w-full" placeholder="InternetGatewayDevice.WANDevice.1.WANConnectionDevice" />
+              <p class="text-xs text-muted mt-1">Creates a new object via CWMP AddObject before setting parameters. Use <code class="text-amber-400">{'{prev}'}</code> to reference the instance number from the previous AddObject. Leave empty for regular parameter rules.</p>
             </div>
             <div>
               <label for="provisioning-manufacturer" class="block text-xs text-muted mb-1.5">Manufacturer (optional)</label>

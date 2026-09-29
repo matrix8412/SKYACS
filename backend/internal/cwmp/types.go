@@ -34,6 +34,8 @@ type SOAPBody struct {
 	DownloadResponse       *DownloadResponse         `xml:"DownloadResponse,omitempty"`
 	TransferComplete       *TransferComplete         `xml:"TransferComplete,omitempty"`
 	TransferCompleteResp   *TransferCompleteResponse `xml:"TransferCompleteResponse,omitempty"`
+	AddObject              *AddObject                `xml:"AddObject,omitempty"`
+	AddObjectResponse      *AddObjectResponse        `xml:"AddObjectResponse,omitempty"`
 	Fault                  *SOAPFault                `xml:"http://schemas.xmlsoap.org/soap/envelope/ Fault,omitempty"`
 }
 
@@ -113,6 +115,20 @@ type GetParameterNamesResp struct {
 type ParameterInfoStruct struct {
 	Name     string `xml:"Name"`
 	Writable bool   `xml:"Writable"`
+}
+
+// AddObject - ACS request to create a new object in the CPE object tree
+type AddObject struct {
+	ParameterName string `xml:"ParameterName"`
+	ObjectName    string `xml:"ObjectName"`
+	Alias         string `xml:"Alias,omitempty"`
+}
+
+// AddObjectResponse - CPE response to AddObject
+type AddObjectResponse struct {
+	InstanceNumber string `xml:"InstanceNumber"`
+	FaultCode      string `xml:"FaultCode"`
+	FaultString    string `xml:"FaultString"`
 }
 
 // SOAP Fault untuk error handling

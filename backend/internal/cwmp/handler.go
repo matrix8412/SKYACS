@@ -205,6 +205,9 @@ func (h *Handler) routeMessage(ctx context.Context, envelope *SOAPEnvelope, remo
 	case "TransferComplete":
 		return h.handleTransferComplete(ctx, envelope.Body.TransferComplete, remoteAddr)
 
+	case "AddObjectResponse":
+		return h.handleAddObjectResponse(ctx, envelope.Body.AddObjectResponse, remoteAddr)
+
 	case "Fault":
 		return h.handleFault(ctx, envelope.Body.Fault, remoteAddr)
 
@@ -297,6 +300,7 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	hasBootstrap := hasEvent(inform, EventBootstrap)
 	var provisioning *SetParameterValues
 	var provisioningRules []models.ProvisioningApplication
+	var addObjectQueue []*AddObject
 
 	if deviceID > 0 && h.provisioningRepo != nil {
 		var allRules []*models.ProvisioningRule
@@ -321,11 +325,23 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 			spv := &SetParameterValues{ParameterKey: "auto-provisioning"}
 			for _, rule := range allRules {
 				provisioningRules = append(provisioningRules, models.ProvisioningApplication{RuleID: rule.ID, RuleVersion: rule.Version})
-				spv.ParameterList.Parameters = append(spv.ParameterList.Parameters, ParameterValueStruct{
-					Name:  rule.ParameterName,
-					Value: rule.ParameterValue,
-					Type:  rule.ParameterType,
-				})
+				if rule.AddObjectPath != "" {
+					objName := lastPathSegment(rule.AddObjectPath)
+					addObjectQueue = append(addObjectQueue, &AddObject{
+						ParameterName: rule.AddObjectPath,
+						ObjectName:    objName,
+					})
+				} else {
+					spv.ParameterList.Parameters = append(spv.ParameterList.Parameters, ParameterValueStruct{
+						Name:  rule.ParameterName,
+						Value: rule.ParameterValue,
+						Type:  rule.ParameterType,
+					})
+				}
+			}
+
+			if len(addObjectQueue) > 0 {
+				log.Printf("Queued %d AddObject operations for device %s", len(addObjectQueue), inform.DeviceId.SerialNumber)
 			}
 
 			if len(spv.ParameterList.Parameters) > 0 {
@@ -344,6 +360,10 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	session.CWMPNamespace = envelope.CWMPNamespace
 	session.Provisioning = provisioning
 	session.ProvisioningRules = provisioningRules
+	if len(addObjectQueue) > 0 {
+		session.AddObjectQueue = addObjectQueue
+		session.AddObjectPhase = 0
+	}
 	// Full-tree discovery on BOOTSTRAP or on a brand-new session (e.g. after
 	// ACS restart) so WAN/WiFi/health data is always available. PERIODIC
 	// informs on an existing session stay cheap for large fleets.
@@ -371,6 +391,15 @@ func hasEvent(inform *Inform, code string) bool {
 	return false
 }
 
+// lastPathSegment returns the last dot-separated segment of a CWMP parameter path.
+func lastPathSegment(path string) string {
+	idx := strings.LastIndex(path, ".")
+	if idx < 0 {
+		return path
+	}
+	return path[idx+1:]
+}
+
 func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interface{}, string, error) {
 	session := h.sessions.Get(sessionID)
 	if session == nil {
@@ -383,6 +412,16 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 	request, err := h.getNextTask(ctx, session)
 	if err != nil || request != nil {
 		return request, namespace, err
+	}
+	if len(session.AddObjectQueue) > 0 && session.AddObjectPhase < len(session.AddObjectQueue) {
+		nextObj := session.AddObjectQueue[session.AddObjectPhase]
+		if session.AddObjectPhase > 0 && session.LastInstanceNum != "" {
+			nextObj.ParameterName = strings.ReplaceAll(nextObj.ParameterName, "{prev}", session.LastInstanceNum)
+			nextObj.ObjectName = strings.ReplaceAll(nextObj.ObjectName, "{prev}", session.LastInstanceNum)
+		}
+		session.State = StateProcessingTasks
+		log.Printf("Sending AddObject: %s (%s) to %s", nextObj.ParameterName, nextObj.ObjectName, sessionID)
+		return nextObj, namespace, nil
 	}
 	if session.Provisioning != nil {
 		request = session.Provisioning
@@ -537,6 +576,71 @@ func (h *Handler) handleSetParameterValuesResponse(ctx context.Context, resp *Se
 	}
 
 	return nil, nil
+}
+
+func (h *Handler) handleAddObjectResponse(ctx context.Context, resp *AddObjectResponse, remoteAddr string) (interface{}, error) {
+	if resp == nil {
+		return nil, errors.New("missing AddObjectResponse")
+	}
+	log.Printf("AddObject response: InstanceNumber=%s, FaultCode=%s from %s", resp.InstanceNumber, resp.FaultCode, remoteAddr)
+
+	session := h.sessions.Get(remoteAddr)
+	if session == nil {
+		return nil, nil
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+
+	if session.State != StateProcessingTasks {
+		return nil, nil
+	}
+
+	// On fault, log it and skip remaining AddObjects, proceed to provisioning
+	if resp.FaultCode != "0" {
+		log.Printf("AddObject failed: %s - %s", resp.FaultCode, resp.FaultString)
+		if h.faultRepo != nil && session.DeviceID > 0 {
+			deviceFault := &models.Fault{
+				DeviceID:    session.DeviceID,
+				FaultCode:   resp.FaultCode,
+				FaultString: "AddObject failed: " + resp.FaultString,
+			}
+			if err := h.faultRepo.Create(ctx, deviceFault); err != nil {
+				log.Printf("Error saving AddObject fault: %v", err)
+			}
+		}
+		// Clear queue and proceed to provisioning
+		session.AddObjectQueue = nil
+		session.AddObjectPhase = 0
+		if session.Provisioning != nil {
+			request := session.Provisioning
+			session.Provisioning = nil
+			return request, nil
+		}
+		return h.getNextTask(ctx, session)
+	}
+
+	// Store instance number for {prev} replacement in subsequent AddObjects
+	session.LastInstanceNum = resp.InstanceNumber
+	session.AddObjectPhase++
+
+	// If more AddObjects in queue, send the next one
+	if session.AddObjectPhase < len(session.AddObjectQueue) {
+		nextObj := session.AddObjectQueue[session.AddObjectPhase]
+		nextObj.ParameterName = strings.ReplaceAll(nextObj.ParameterName, "{prev}", resp.InstanceNumber)
+		nextObj.ObjectName = strings.ReplaceAll(nextObj.ObjectName, "{prev}", resp.InstanceNumber)
+		log.Printf("Sending next AddObject: %s (%s)", nextObj.ParameterName, nextObj.ObjectName)
+		return nextObj, nil
+	}
+
+	// All AddObjects done, proceed to provisioning
+	session.AddObjectQueue = nil
+	session.AddObjectPhase = 0
+	if session.Provisioning != nil {
+		request := session.Provisioning
+		session.Provisioning = nil
+		return request, nil
+	}
+	return h.getNextTask(ctx, session)
 }
 
 func (h *Handler) handleRebootResponse(ctx context.Context, remoteAddr string) (interface{}, error) {

@@ -67,3 +67,64 @@ func TestSetParameterValuesIncludesSOAPTypesAndArrayMetadata(t *testing.T) {
 		t.Fatalf("generated SOAP is not well formed: %v\n%s", err, encoded)
 	}
 }
+
+func TestAddObjectSerializesCorrectly(t *testing.T) {
+	request := &AddObject{
+		ParameterName: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice",
+		ObjectName:    "WANConnectionDevice",
+	}
+	encoded, err := GenerateSOAPEnvelopeWithContext(request, CWMPNamespace10, "addobj-1")
+	if err != nil {
+		t.Fatalf("GenerateSOAPEnvelopeWithContext: %v", err)
+	}
+	for _, expected := range []string{"AddObject", "InternetGatewayDevice.WANDevice.1.WANConnectionDevice", "WANConnectionDevice", "addobj-1"} {
+		if !bytes.Contains(encoded, []byte(expected)) {
+			t.Fatalf("missing %q in SOAP: %s", expected, encoded)
+		}
+	}
+	var document interface{}
+	if err := xml.Unmarshal(encoded, &document); err != nil {
+		t.Fatalf("generated SOAP is not well formed: %v\n%s", err, encoded)
+	}
+}
+
+func TestParseAddObjectResponse(t *testing.T) {
+	payload := `<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
+  <soap:Header><cwmp:ID soap:mustUnderstand="1">req-1</cwmp:ID></soap:Header>
+  <soap:Body><cwmp:AddObjectResponse><InstanceNumber>2</InstanceNumber><FaultCode>0</FaultCode><FaultString></FaultString></cwmp:AddObjectResponse></soap:Body>
+</soap:Envelope>`
+	envelope, err := ParseSOAPEnvelope(strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("ParseSOAPEnvelope: %v", err)
+	}
+	if got := DetectMessageType(&envelope.Body); got != "AddObjectResponse" {
+		t.Fatalf("unexpected message type %q", got)
+	}
+	if envelope.Body.AddObjectResponse == nil {
+		t.Fatal("AddObjectResponse is nil")
+	}
+	if envelope.Body.AddObjectResponse.InstanceNumber != "2" {
+		t.Fatalf("unexpected InstanceNumber %q", envelope.Body.AddObjectResponse.InstanceNumber)
+	}
+	if envelope.Body.AddObjectResponse.FaultCode != "0" {
+		t.Fatalf("unexpected FaultCode %q", envelope.Body.AddObjectResponse.FaultCode)
+	}
+}
+
+func TestLastPathSegment(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{"InternetGatewayDevice.WANDevice.1.WANConnectionDevice", "WANConnectionDevice"},
+		{"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection", "WANIPConnection"},
+		{"Device", "Device"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		if got := lastPathSegment(tt.path); got != tt.want {
+			t.Errorf("lastPathSegment(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}

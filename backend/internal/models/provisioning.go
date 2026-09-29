@@ -14,6 +14,7 @@ type ProvisioningRule struct {
 	Enabled        bool      `json:"enabled" gorm:"default:true"`
 	Version        uint64    `json:"version" gorm:"not null;default:1"`
 	Description    string    `json:"description,omitempty"`
+	AddObjectPath  string    `json:"add_object_path,omitempty" gorm:"size:512"`
 	CreatedAt      time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt      time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -32,6 +33,7 @@ type CreateProvisioningRuleRequest struct {
 	Tag            string `json:"tag"`
 	Enabled        bool   `json:"enabled"`
 	Description    string `json:"description"`
+	AddObjectPath  string `json:"add_object_path"`
 }
 
 type ProvisioningApplication struct {
