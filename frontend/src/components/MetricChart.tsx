@@ -189,7 +189,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
         label: '',
         font: '11px "IBM Plex Mono", monospace',
         space: 40,
-        side: 3,
+        side: 1,
       });
     }
 

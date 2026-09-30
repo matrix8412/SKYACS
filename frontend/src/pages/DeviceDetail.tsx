@@ -16,7 +16,7 @@ const DeviceDetail: Component = () => {
   const { confirm } = useFeedback();
   const serial = () => params.serial || '';
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = () => searchParams.tab === 'metrics' || searchParams.tab === 'tasks' ? searchParams.tab : 'overview';
+  const activeTab = () => searchParams.tab === 'metrics' || searchParams.tab === 'tasks' || searchParams.tab === 'credentials' || searchParams.tab === 'hosts' ? searchParams.tab : 'overview';
 
   const [device, { refetch: refetchDevice }] = createResource(serial, api.getDevice);
   const [parameters, { refetch: refetchParams }] = createResource(serial, api.getDeviceParameters);
@@ -605,6 +605,44 @@ const DeviceDetail: Component = () => {
     return wanProfiles;
   };
 
+  const getLanInterfaces = () => {
+    const params = parameters() || [];
+    const lans: Array<{
+      index: number;
+      name: string;
+      mac: string;
+      status: string;
+      duplex: string;
+      speed: string;
+      l3Enable: string;
+      enabled: boolean;
+    }> = [];
+
+    for (let i = 1; i <= 8; i++) {
+      const prefix = `InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.${i}.`;
+      const getVal = (suffix: string) => params.find(p => p.name === prefix + suffix)?.value;
+
+      const name = getVal('Name');
+      const mac = getVal('MACAddress');
+      const status = getVal('Status');
+      const enable = getVal('Enable');
+
+      if (!name && !mac && !status) continue;
+
+      lans.push({
+        index: i,
+        name: name || `LAN${i}`,
+        mac: mac || '-',
+        status: status || '-',
+        duplex: getVal('X_HW_DuplexMode') || '-',
+        speed: getVal('X_HW_Speed') || '-',
+        l3Enable: getVal('X_HW_L3Enable') || '-',
+        enabled: enable === '1' || enable === 'true',
+      });
+    }
+    return lans;
+  };
+
   const getWlanConfigs = () => {
     const params = parameters() || [];
     const wlans: Array<{
@@ -816,6 +854,8 @@ const DeviceDetail: Component = () => {
         <button role="tab" class={`tab-btn ${activeTab() === 'overview' ? 'is-active' : ''}`} aria-selected={activeTab() === 'overview'} onClick={() => setSearchParams({ tab: null })}>Overview</button>
         <button role="tab" class={`tab-btn ${activeTab() === 'metrics' ? 'is-active' : ''}`} aria-selected={activeTab() === 'metrics'} onClick={() => setSearchParams({ tab: 'metrics' })}>Metrics</button>
         <button role="tab" class={`tab-btn ${activeTab() === 'tasks' ? 'is-active' : ''}`} aria-selected={activeTab() === 'tasks'} onClick={() => setSearchParams({ tab: 'tasks' })}>Tasks</button>
+        <button role="tab" class={`tab-btn ${activeTab() === 'credentials' ? 'is-active' : ''}`} aria-selected={activeTab() === 'credentials'} onClick={() => setSearchParams({ tab: 'credentials' })}>Credentials</button>
+        <button role="tab" class={`tab-btn ${activeTab() === 'hosts' ? 'is-active' : ''}`} aria-selected={activeTab() === 'hosts'} onClick={() => setSearchParams({ tab: 'hosts' })}>Connected Hosts</button>
       </nav>
 
       <Show when={message()}>
@@ -982,7 +1022,7 @@ const DeviceDetail: Component = () => {
               </Show>
             </Show>
 
-            <Show when={activeTab() === 'overview'}>
+            <Show when={activeTab() === 'credentials'}>
             {/* Row 1.5: Modem Credentials */}
             <div class="card p-5">
               <div class="flex items-center justify-between mb-4">
@@ -1087,7 +1127,9 @@ const DeviceDetail: Component = () => {
                 </div>
               </Show>
             </div>
+            </Show>
 
+            <Show when={activeTab() === 'overview'}>
             {/* Row 2: WAN Information */}
             <div class="card p-5">
               <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
@@ -1209,6 +1251,53 @@ const DeviceDetail: Component = () => {
               </Show>
             </div>
 
+            {/* Row 2.5: LAN Interfaces */}
+            <div class="card p-5">
+              <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
+                <Network size={14} />
+                LAN Interfaces ({getLanInterfaces().length})
+              </h2>
+              <Show when={getLanInterfaces().length > 0} fallback={
+                <p class="text-muted text-sm">No LAN interface data. Click Summon to fetch.</p>
+              }>
+                <div class="overflow-x-auto">
+                  <table class="data-table w-full text-sm min-w-[720px]">
+                    <thead class="sticky top-0 bg-base z-10">
+                      <tr class="border-b-2 border-subtle bg-base">
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary">Name</th>
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary">MAC Address</th>
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary">Status</th>
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary">Duplex</th>
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary">Speed</th>
+                        <th class="text-center px-2 py-2.5 font-semibold text-primary">L3</th>
+                        <th class="text-center px-2 py-2.5 font-semibold text-primary">Enable</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <For each={getLanInterfaces()}>
+                        {(lan) => (
+                          <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
+                            <td class="px-3 py-2.5 text-primary font-medium">{lan.name}</td>
+                            <td class="px-3 py-2.5 text-primary font-mono">{lan.mac}</td>
+                            <td class="px-3 py-2.5">
+                              <span class="inline-flex items-center gap-1.5">
+                                <span class={`w-2 h-2 rounded-full ${lan.status.toLowerCase() === 'nolink' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                <span class="text-secondary">{lan.status}</span>
+                              </span>
+                            </td>
+                            <td class="px-3 py-2.5 text-secondary">{lan.duplex}</td>
+                            <td class="px-3 py-2.5 text-secondary">{lan.speed}</td>
+                            <td class="px-2 py-2.5 text-center">{lan.l3Enable === '1' || lan.l3Enable === 'true' ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
+                            <td class="px-2 py-2.5 text-center">{lan.enabled ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
+                          </tr>
+                        )}
+                      </For>
+                    </tbody>
+                  </table>
+                </div>
+              </Show>
+            </div>
+
             {/* Row 3: Wi-Fi information */}
             <div class="card p-5">
               <h2 class="text-xs font-medium text-muted mb-4 flex items-center gap-2">
@@ -1318,7 +1407,9 @@ const DeviceDetail: Component = () => {
                 </Show>
               </Show>
             </div>
+            </Show>
 
+            <Show when={activeTab() === 'hosts'}>
             {/* Row 4: Connected Hosts */}
             <div class="card p-5">
               <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
