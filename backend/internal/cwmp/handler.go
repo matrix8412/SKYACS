@@ -361,7 +361,7 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	session.CWMPNamespace = envelope.CWMPNamespace
 	session.Provisioning = provisioning
 	session.ProvisioningRules = provisioningRules
-	session.LastInstanceNum = ""
+	session.AddObjectInstances = nil
 	session.AddObjectQueue = addObjectQueue
 	session.AddObjectPhase = 0
 	// Full-tree discovery on BOOTSTRAP or on a brand-new session (e.g. after
@@ -413,9 +413,7 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 	}
 	if len(session.AddObjectQueue) > 0 && session.AddObjectPhase < len(session.AddObjectQueue) {
 		nextObj := session.AddObjectQueue[session.AddObjectPhase]
-		if session.LastInstanceNum != "" {
-			nextObj.ObjectName = strings.ReplaceAll(nextObj.ObjectName, "{prev}", session.LastInstanceNum)
-		}
+		nextObj.ObjectName = resolveAddObjectReferences(nextObj.ObjectName, session.AddObjectInstances)
 		session.State = StateProcessingTasks
 		log.Printf("Sending AddObject: %s to %s", nextObj.ObjectName, sessionID)
 		return nextObj, namespace, nil
@@ -591,14 +589,14 @@ func (h *Handler) handleAddObjectResponse(ctx context.Context, resp *AddObjectRe
 		return nil, nil
 	}
 
-	// Store instance number for {prev} replacement in subsequent AddObjects
-	session.LastInstanceNum = resp.InstanceNumber
+	// Preserve every AddObject result so later rules can refer to any instance.
+	session.AddObjectInstances = append(session.AddObjectInstances, resp.InstanceNumber)
 	session.AddObjectPhase++
 
 	// If more AddObjects in queue, send the next one
 	if session.AddObjectPhase < len(session.AddObjectQueue) {
 		nextObj := session.AddObjectQueue[session.AddObjectPhase]
-		nextObj.ObjectName = strings.ReplaceAll(nextObj.ObjectName, "{prev}", resp.InstanceNumber)
+		nextObj.ObjectName = resolveAddObjectReferences(nextObj.ObjectName, session.AddObjectInstances)
 		log.Printf("Sending next AddObject: %s", nextObj.ObjectName)
 		return nextObj, nil
 	}
@@ -621,11 +619,11 @@ func (h *Handler) handleAddObjectResponse(ctx context.Context, resp *AddObjectRe
 func takeProvisioning(session *Session) *SetParameterValues {
 	request := session.Provisioning
 	session.Provisioning = nil
-	if request != nil && session.LastInstanceNum != "" {
+	if request != nil && len(session.AddObjectInstances) > 0 {
 		for i := range request.ParameterList.Parameters {
 			parameter := &request.ParameterList.Parameters[i]
-			parameter.Name = strings.ReplaceAll(parameter.Name, "{prev}", session.LastInstanceNum)
-			parameter.Value = strings.ReplaceAll(parameter.Value, "{prev}", session.LastInstanceNum)
+			parameter.Name = resolveAddObjectReferences(parameter.Name, session.AddObjectInstances)
+			parameter.Value = resolveAddObjectReferences(parameter.Value, session.AddObjectInstances)
 		}
 	}
 	return request
@@ -771,7 +769,7 @@ func (h *Handler) handleFault(ctx context.Context, fault *SOAPFault, remoteAddr 
 			log.Printf("Aborting provisioning after AddObject fault: %s - %s", faultCode, faultMessage)
 			session.AddObjectQueue = nil
 			session.AddObjectPhase = 0
-			session.LastInstanceNum = ""
+			session.AddObjectInstances = nil
 			session.Provisioning = nil
 			session.ProvisioningRules = nil
 			return h.getNextTask(ctx, session)

@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -2030,12 +2031,17 @@ func (r *Router) handleListProvisioningRules(w http.ResponseWriter, req *http.Re
 	respondJSON(w, http.StatusOK, rules)
 }
 
-// validatePrevReferenceInList checks that a rule using {prev} has an AddObject
-// rule preceding it in the (order, id) execution order.
+var provisioningAddObjectReference = regexp.MustCompile(`\{prev([0-9]*)\}`)
+
+// validatePrevReferenceInList checks that each referenced AddObject result is
+// available before the rule in the (order, id) execution order.
 func validatePrevReferenceInList(rules []*models.ProvisioningRule, ruleID int64, order int, parameterName, parameterValue, addObjectPath string) error {
-	if !strings.Contains(parameterName, "{prev}") && !strings.Contains(parameterValue, "{prev}") && !strings.Contains(addObjectPath, "{prev}") {
+	text := parameterName + "\n" + parameterValue + "\n" + addObjectPath
+	refs := provisioningAddObjectReference.FindAllStringSubmatch(text, -1)
+	if len(refs) == 0 {
 		return nil
 	}
+	available := 0
 	for _, rule := range rules {
 		if rule.ID == ruleID {
 			continue
@@ -2046,10 +2052,26 @@ func validatePrevReferenceInList(rules []*models.ProvisioningRule, ruleID int64,
 		// For create (ruleID=0): new rule gets highest id, so same-order rules precede it.
 		// For update: the AddObject rule must come strictly before by (order, id).
 		if rule.Order < order || (rule.Order == order && (ruleID == 0 || rule.ID < ruleID)) {
-			return nil
+			available++
 		}
 	}
-	return fmt.Errorf("rule uses {prev} but no AddObject rule exists before it in the execution order")
+	for _, ref := range refs {
+		required := 1
+		if ref[1] != "" {
+			n, err := strconv.Atoi(ref[1])
+			if err != nil || n < 1 {
+				return fmt.Errorf("invalid AddObject reference %s", ref[0])
+			}
+			required = n
+		}
+		if available < required {
+			if ref[1] == "" {
+				return fmt.Errorf("rule uses {prev} but no AddObject rule exists before it in the execution order")
+			}
+			return fmt.Errorf("rule uses %s but only %d AddObject rule(s) exist before it in the execution order", ref[0], available)
+		}
+	}
+	return nil
 }
 
 // validatePrevReference loads all rules and delegates to validatePrevReferenceInList.

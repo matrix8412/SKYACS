@@ -32,9 +32,9 @@ type Session struct {
 	ProvisioningRules []models.ProvisioningApplication
 
 	// AddObject queue for creating new objects before SetParameterValues
-	AddObjectQueue  []*AddObject
-	AddObjectPhase  int
-	LastInstanceNum string
+	AddObjectQueue     []*AddObject
+	AddObjectPhase     int
+	AddObjectInstances []string
 
 	// Metric collection state
 	DeviceType        string

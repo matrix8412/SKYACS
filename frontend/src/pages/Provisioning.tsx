@@ -446,7 +446,7 @@ const Provisioning: Component = () => {
                 AddObject: create a new object instance
               </label>
               <Show when={isAddObjectRule()}>
-                <p class="text-xs text-muted mt-1">The path above identifies the object collection. No parameter value is sent. Use <code class="text-amber-400">{'{prev}'}</code> in a later rule to reference the new instance.</p>
+                <p class="text-xs text-muted mt-1">The path above identifies the object collection. No parameter value is sent. In later rules, use <code class="text-amber-400">{'{prev}'}</code> for the latest AddObject instance, or <code class="text-amber-400">{'{prev1}'}</code>, <code class="text-amber-400">{'{prev2}'}</code> for the first and second created instances.</p>
               </Show>
             </div>
             <Show when={!isAddObjectRule()}>
