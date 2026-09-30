@@ -39,7 +39,7 @@ func (r *ProvisioningRepository) Create(ctx context.Context, rule *models.Provis
 
 func (r *ProvisioningRepository) List(ctx context.Context) ([]*models.ProvisioningRule, error) {
 	var rules []*models.ProvisioningRule
-	if err := r.db.WithContext(ctx).Order("order ASC, id ASC").Find(&rules).Error; err != nil {
+	if err := r.db.WithContext(ctx).Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, decryptProvisioningRules(rules)
@@ -54,7 +54,7 @@ func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, devic
 		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
 		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
 		Where("NOT EXISTS (SELECT 1 FROM provisioning_applications pa WHERE pa.rule_id = provisioning_rules.id AND pa.rule_version = provisioning_rules.version AND pa.device_id = ?)", deviceID).
-		Order("order ASC, id ASC").Find(&rules).Error; err != nil {
+		Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, decryptProvisioningRules(rules)
