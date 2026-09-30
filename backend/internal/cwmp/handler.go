@@ -327,8 +327,13 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 				provisioningRules = append(provisioningRules, models.ProvisioningApplication{RuleID: rule.ID, RuleVersion: rule.Version})
 				if rule.AddObjectPath != "" {
 					objName := lastPathSegment(rule.AddObjectPath)
+					parentPath := strings.TrimSuffix(rule.AddObjectPath, "."+objName)
+					if parentPath == rule.AddObjectPath {
+						log.Printf("Skipping AddObject for rule %d: AddObjectPath %q has no parent segment", rule.ID, rule.AddObjectPath)
+						continue
+					}
 					addObjectQueue = append(addObjectQueue, &AddObject{
-						ParameterName: rule.AddObjectPath,
+						ParameterName: parentPath,
 						ObjectName:    objName,
 					})
 				} else {

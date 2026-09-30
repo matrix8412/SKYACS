@@ -128,3 +128,64 @@ func TestPeriodicInformOnExistingSessionDoesNotReTriggerAutoFetch(t *testing.T) 
 		t.Fatalf("AutoFetch was re-triggered on existing session: %s", emptyRec2.Body.String())
 	}
 }
+
+// TestAddObjectParentPathDerivation verifies that the parent path is correctly
+// derived from the full AddObjectPath for the AddObject SOAP call.
+// TR-069 requires ParameterName to be the parent object path (without the
+// last segment), and ObjectName to be the last segment.
+func TestAddObjectParentPathDerivation(t *testing.T) {
+	tests := []struct {
+		name         string
+		addObjectPath string
+		wantParent   string
+		wantObject   string
+		wantSkip     bool
+	}{
+		{
+			name:         "multi-segment path",
+			addObjectPath: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection",
+			wantParent:   "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2",
+			wantObject:   "WANIPConnection",
+		},
+		{
+			name:         "two-segment path",
+			addObjectPath: "InternetGatewayDevice.WANDevice",
+			wantParent:   "InternetGatewayDevice",
+			wantObject:   "WANDevice",
+		},
+		{
+			name:         "single-segment path has no parent",
+			addObjectPath: "WANIPConnection",
+			wantParent:   "",
+			wantObject:   "WANIPConnection",
+			wantSkip:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			objName := lastPathSegment(tt.addObjectPath)
+			if objName != tt.wantObject {
+				t.Fatalf("lastPathSegment = %q, want %q", objName, tt.wantObject)
+			}
+			parentPath := strings.TrimSuffix(tt.addObjectPath, "."+objName)
+			if tt.wantSkip {
+				if parentPath != tt.addObjectPath {
+					t.Fatalf("expected parentPath unchanged for single-segment path, got %q", parentPath)
+				}
+				return
+			}
+			if parentPath != tt.wantParent {
+				t.Fatalf("parentPath = %q, want %q", parentPath, tt.wantParent)
+			}
+			// Verify the AddObject struct would be correct
+			addObj := &AddObject{
+				ParameterName: parentPath,
+				ObjectName:    objName,
+			}
+			if addObj.ParameterName == addObj.ObjectName {
+				t.Fatalf("ParameterName and ObjectName are identical (%q) — parent path not derived", addObj.ParameterName)
+			}
+		})
+	}
+}
