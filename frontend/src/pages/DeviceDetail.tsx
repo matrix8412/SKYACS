@@ -11,6 +11,7 @@ import MetricChart from '../components/MetricChart';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
+import { getWanProfiles } from '../lib/wanProfiles';
 
 const DeviceDetail: Component = () => {
   const params = useParams<{ serial: string }>();
@@ -49,7 +50,7 @@ const DeviceDetail: Component = () => {
   const [paramFilter, setParamFilter] = createSignal('');
   const [editingWifi, setEditingWifi] = createSignal<number | null>(null);
   const [wifiEdits, setWifiEdits] = createSignal<Record<string, string>>({});
-  const [editingPPP, setEditingPPP] = createSignal<number | null>(null);
+  const [editingPPP, setEditingPPP] = createSignal<string | null>(null);
   const [pppEdits, setPPPEdits] = createSignal<Record<string, string>>({});
   const [refreshInterval, setRefreshInterval] = createSignal<number>(
     parseInt(localStorage.getItem(`skyacs_auto_refresh_${params.serial}`) ?? '30000', 10)
@@ -270,9 +271,9 @@ const DeviceDetail: Component = () => {
     setActionLoading(null);
   };
 
-  const handleEditPPP = (index: number, username: string, password: string) => {
-    setEditingPPP(index);
-    setPPPEdits({ username, password: password === '******' ? '' : password });
+  const handleEditPPP = (path: string, username: string, password: string) => {
+    setEditingPPP(path);
+    setPPPEdits({ username: username === '-' ? '' : username, password: password === '-' || password === '******' ? '' : password });
   };
 
   const handleCancelEditPPP = () => {
@@ -280,17 +281,17 @@ const DeviceDetail: Component = () => {
     setPPPEdits({});
   };
 
-  const handleSavePPP = async (index: number) => {
+  const handleSavePPP = async (path: string) => {
     const edits = pppEdits();
     if (!edits.username && !edits.password) {
       handleCancelEditPPP();
       return;
     }
 
-    setActionLoading(`ppp-${index}`);
+    setActionLoading(`ppp-${path}`);
     try {
       const params: Record<string, string> = {};
-      const prefix = `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${index}.WANPPPConnection.1.`;
+      const prefix = path;
       
       if (edits.username) {
         params[prefix + 'Username'] = edits.username;
@@ -300,11 +301,11 @@ const DeviceDetail: Component = () => {
       }
 
       await api.setParameterValues(serial(), params);
-      showMessage('success', `PPPoE credential update queued for WAN${index}.`);
+      showMessage('success', `PPPoE credential update queued for ${path}.`);
       refetchTasks();
       handleCancelEditPPP();
     } catch (err) {
-      showMessage('error', `PPPoE credentials for WAN${index} were not queued. The entered values are preserved; retry after checking the CPE session.`, (err as Error).message);
+      showMessage('error', `PPPoE credentials for ${path} were not queued. The entered values are preserved; retry after checking the CPE session.`, (err as Error).message);
     }
     setActionLoading(null);
   };
@@ -520,113 +521,7 @@ const DeviceDetail: Component = () => {
     return 'text-amber-400';
   };
 
-  const getWanConfigs = () => {
-    const params = parameters() || [];
-    const wanProfiles: Array<{
-      index: number;
-      name: string;
-      status: string;
-      vlan: string;
-      username: string;
-      password: string;
-      ipAddress: string;
-      service: string;
-      nat: string;
-      type: string;
-      uptime: string;
-      lan1: boolean;
-      lan2: boolean;
-      lan3: boolean;
-      lan4: boolean;
-      ssid1: boolean;
-      ssid2: boolean;
-      ssid3: boolean;
-      ssid4: boolean; 
-    }> = [];
-
-    for (let i = 1; i <= 8; i++) {
-      const wanPPP = params.filter(p => p.name.includes(`WANPPPConnection.${i}.`));
-      const wanIP = params.filter(p => p.name.includes(`WANIPConnection.${i}.`));
-      const wanDevice = params.filter(p => p.name.includes(`WANConnectionDevice.${i}.`));
-      
-      const wanParams = wanPPP.length > 0 ? [...wanPPP, ...wanDevice] : (wanIP.length > 0 ? [...wanIP, ...wanDevice] : []);
-      
-      if (wanParams.length === 0) continue;
-
-      const getName = (suffix: string) => wanParams.find(p => p.name.includes(suffix))?.value || '-';
-      
-      const isEnabled = (val: string) => val === '1' || val === 'true' || val.toLowerCase() === 'enable' || val.toLowerCase() === 'enabled' || val.toLowerCase() === 'yes';
-      
-      const detectPortBinding = (portNum: number, portType: 'lan' | 'ssid') => {
-        const portPatterns = portType === 'lan' 
-          ? [`Lan${portNum}Enable`, `LAN${portNum}Enable`, `Eth${portNum}Enable`, `ETH${portNum}`, `LAN${portNum}`, `Port${portNum}`]
-          : [`SSID${portNum}Enable`, `Ssid${portNum}Enable`, `Wlan${portNum}Enable`, `WLAN${portNum}`, `SSID${portNum}`, `WiFi${portNum}`];
-        
-        for (const pattern of portPatterns) {
-          const param = wanParams.find(p => p.name.includes(pattern));
-          if (param && isEnabled(param.value)) return true;
-        }
-        
-        const bindingParams = wanParams.filter(p => 
-          p.name.toLowerCase().includes('binding') || 
-          p.name.toLowerCase().includes('bindlist') ||
-          p.name.toLowerCase().includes('servicelist') ||
-          p.name.toLowerCase().includes('portmapping')
-        );
-        
-        for (const bp of bindingParams) {
-          const val = bp.value.toLowerCase();
-          const searchTerms = portType === 'lan'
-            ? [`lan${portNum}`, `eth${portNum}`, `port${portNum}`]
-            : [`ssid${portNum}`, `wlan${portNum}`, `wifi${portNum}`];
-          
-          for (const term of searchTerms) {
-            if (val.includes(term)) return true;
-          }
-        }
-        
-        return false;
-      };
-
-      const connStatus = getName('ConnectionStatus');
-      if (connStatus === '-' && getName('Enable') !== '1') continue;
-
-      const getFirstValid = (...suffixes: string[]) => {
-        for (const s of suffixes) {
-          const val = getName(s);
-          if (val && val !== '-') return val;
-        }
-        for (const s of suffixes) {
-          const found = params.find(p => p.name.includes(s))?.value;
-          if (found && found !== '-') return found;
-        }
-        return '-';
-      };
-
-      wanProfiles.push({
-        index: i,
-        name: getName('Name') !== '-' ? getName('Name') : `WAN${i}`,
-        status: connStatus,
-        vlan: getFirstValid('X_HW_VLAN', 'VLANID', 'VLANIDMark', 'X_CT_VLAN', 'WANEponLinkConfig.VLANIDMark'),
-        username: getName('Username'),
-        password: getName('Password') || '******',
-        ipAddress: getFirstValid('ExternalIPAddress', 'IPAddress'),
-        service: getFirstValid('X_HW_SERVICELIST', 'X_HW_ServiceList', 'ServiceList', 'X_CT_ServiceList', 'X_CU_ServiceList'),
-        nat: isEnabled(getName('NATEnabled')) ? 'Enabled' : 'Disabled',
-        type: getName('ConnectionType') || (getName('Username') !== '-' ? 'PPPoE' : 'DHCP'),
-        uptime: getName('Uptime'),
-        lan1: detectPortBinding(1, 'lan'),
-        lan2: detectPortBinding(2, 'lan'),
-        lan3: detectPortBinding(3, 'lan'),
-        lan4: detectPortBinding(4, 'lan'),
-        ssid1: detectPortBinding(1, 'ssid'),
-        ssid2: detectPortBinding(2, 'ssid'),
-        ssid3: detectPortBinding(3, 'ssid'),
-        ssid4: detectPortBinding(4, 'ssid'),
-      });
-    }
-    return wanProfiles;
-  };
+  const wanProfiles = createMemo(() => getWanProfiles(parameters() || []));
 
   const getLanInterfaces = () => {
     const params = parameters() || [];
@@ -1194,7 +1089,7 @@ const DeviceDetail: Component = () => {
                 <Network size={14} />
                 WAN Connections
               </h2>
-              <Show when={getWanConfigs().length > 0} fallback={
+              <Show when={wanProfiles().length > 0} fallback={
                 <p class="text-muted text-sm">No WAN configuration data. Click Summon to fetch.</p>
               }>
                 <div class="overflow-x-auto">
@@ -1222,18 +1117,21 @@ const DeviceDetail: Component = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      <For each={getWanConfigs()}>
+                      <For each={wanProfiles()}>
                         {(wan) => (
                           <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
-                            <td class="px-3 py-2.5 text-primary font-medium">{wan.name}</td>
+                            <td class="px-3 py-2.5 text-primary font-medium">
+                              <div>{wan.name}</div>
+                              <div class="text-[10px] text-muted font-mono font-normal">{wan.path}</div>
+                            </td>
                             <td class="px-3 py-2.5">
-                              <span class={`badge ${wan.status === 'Connected' ? 'badge-success' : 'badge-error'}`}>{wan.status}</span>
+                              <span class={`badge ${wan.status === 'Connected' ? 'badge-success' : wan.status === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.status}</span>
                             </td>
                             <td class="px-3 py-2.5 text-secondary">{formatUptime(wan.uptime)}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.type}</td>
                             <td class="px-3 py-2.5 text-primary font-mono">{wan.vlan}</td>
                             <td class="px-3 py-2.5">
-                              <Show when={editingPPP() === wan.index} fallback={
+                              <Show when={editingPPP() === wan.path} fallback={
                                 <span class="text-secondary font-mono">{wan.username}</span>
                               }>
                                 <div class="space-y-1">
@@ -1268,10 +1166,10 @@ const DeviceDetail: Component = () => {
                             <td class="px-2 py-2.5 text-center">{wan.ssid3 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
                             <td class="px-2 py-2.5 text-center">{wan.ssid4 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
                             <td class="px-2 py-2">
-                              <Show when={isFullAccess() && (wan.type.includes('PPP') || (wan.username && wan.username !== '-'))} fallback={<span class="text-muted text-xs">-</span>}>
-                                <Show when={editingPPP() === wan.index} fallback={
+                              <Show when={isFullAccess() && wan.path.includes('.WANPPPConnection.')} fallback={<span class="text-muted text-xs">-</span>}>
+                                <Show when={editingPPP() === wan.path} fallback={
                                   <button
-                                    onClick={() => handleEditPPP(wan.index, wan.username, wan.password)}
+                                    onClick={() => handleEditPPP(wan.path, wan.username, wan.password)}
                                     disabled={actionLoading() !== null}
                                     class="icon-button"
                                     aria-label={`Edit PPPoE credentials for ${wan.name}`}
@@ -1281,8 +1179,8 @@ const DeviceDetail: Component = () => {
                                 }>
                                   <div class="flex gap-1">
                                     <button
-                                      onClick={() => handleSavePPP(wan.index)}
-                                      disabled={actionLoading() === `ppp-${wan.index}`}
+                                      onClick={() => handleSavePPP(wan.path)}
+                                      disabled={actionLoading() === `ppp-${wan.path}`}
                                       class="icon-button"
                                       aria-label={`Queue PPPoE credential update for ${wan.name}`}
                                     >
