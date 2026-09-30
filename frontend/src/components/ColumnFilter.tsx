@@ -86,7 +86,7 @@ const ColumnFilter: Component<ColumnFilterProps> = (props) => {
       >
         <Filter size={11} />
         <Show when={props.active}>
-          <span class="filter-badge">{props.active.rules.length}</span>
+          <span class="filter-badge">{props.active!.rules.length}</span>
         </Show>
       </button>
       <Show when={open()}>
