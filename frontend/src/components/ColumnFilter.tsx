@@ -53,8 +53,14 @@ const ColumnFilter: Component<ColumnFilterProps> = (props) => {
     setRules((r) => r.filter((_, i) => i !== index));
   };
 
-  const updateRule = (index: number, field: 'operator' | 'value', val: string) => {
-    setRules((r) => r.map((rule, i) => i === index ? { ...rule, [field]: val } : rule));
+  const mutateRule = (index: number, field: 'operator' | 'value', val: string) => {
+    // Mutate in place to avoid triggering For re-render (prevents cursor jump)
+    const r = rules();
+    if (field === 'operator') {
+      r[index].operator = val as FilterOperator;
+    } else {
+      r[index].value = val;
+    }
   };
 
   const handleApply = () => {
@@ -127,7 +133,7 @@ const ColumnFilter: Component<ColumnFilterProps> = (props) => {
                       <select
                         class="filter-dropdown-select filter-rule-op"
                         value={rule.operator}
-                        onChange={(e) => updateRule(idx(), 'operator', e.currentTarget.value)}
+                        onChange={(e) => mutateRule(idx(), 'operator', e.currentTarget.value)}
                       >
                         <For each={Object.entries(OPERATOR_LABELS)}>
                           {([value, label]) => <option value={value}>{label}</option>}
@@ -137,7 +143,7 @@ const ColumnFilter: Component<ColumnFilterProps> = (props) => {
                         type="text"
                         class="filter-rule-input"
                         value={rule.value}
-                        onInput={(e) => updateRule(idx(), 'value', e.currentTarget.value)}
+                        onInput={(e) => mutateRule(idx(), 'value', e.currentTarget.value)}
                         placeholder="Hodnota…"
                       />
                       <Show when={rules().length > 1}>
