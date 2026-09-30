@@ -19,6 +19,9 @@ type MetricDefinition struct {
 	Unit            string    `json:"unit"`
 	Source          string    `json:"source" gorm:"not null;default:'passive'"`
 	Active          bool      `json:"active" gorm:"default:true"`
+	Group           string    `json:"group" gorm:"default:''"`
+	Color           string    `json:"color" gorm:"default:''"`
+	Axis            string    `json:"axis" gorm:"default:'left'"`
 	CreatedAt       time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

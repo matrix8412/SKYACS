@@ -6,9 +6,11 @@ import { api, type MetricDefinition } from '../lib/api';
 
 interface MetricChartProps {
   serial: string;
-  metric: MetricDefinition;
+  metrics: MetricDefinition[];
   hours?: number;
 }
+
+const DEFAULT_PALETTE = ['#38bdf8', '#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#fb923c'];
 
 const BUCKET_OPTIONS: Array<{ label: string; value: string; hours: number }> = [
   { label: '1h', value: '5min', hours: 1 },
@@ -30,6 +32,13 @@ const getStoredBucket = (serial: string): typeof BUCKET_OPTIONS[number] => {
   return BUCKET_OPTIONS[2];
 };
 
+const hexToRgba = (hex: string, alpha: number): string => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
 const MetricChart: Component<MetricChartProps> = (props) => {
   const [bucket, setBucket] = createSignal(getStoredBucket(props.serial));
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
@@ -39,26 +48,64 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   let tooltipEl: HTMLDivElement | null = null;
 
   const [data] = createResource(
-    () => ({ serial: props.serial, metricId: props.metric.id, bucket: bucket().value, hours: bucket().hours }),
-    (q) => api.getDeviceMetrics(q.serial, q.metricId, q.bucket, q.hours),
+    () => ({ serial: props.serial, ids: props.metrics.map((m) => m.id), bucket: bucket().value, hours: bucket().hours }),
+    async (q) => {
+      const results = await Promise.all(
+        q.ids.map((id) => api.getDeviceMetrics(q.serial, id, q.bucket, q.hours)),
+      );
+      return results;
+    },
   );
 
+  const hasRightAxis = createMemo(() => props.metrics.some((m) => m.axis === 'right'));
+
   const seriesData = createMemo(() => {
-    const d = data();
-    if (!d) return null;
-    if (d.aggregates && d.aggregates.length > 0) {
-      const times = d.aggregates.map((a) => new Date(a.timestamp).getTime() / 1000);
-      const avgs = d.aggregates.map((a) => a.avg);
-      const mins = d.aggregates.map((a) => a.min);
-      const maxs = d.aggregates.map((a) => a.max);
-      return { series: [times, avgs, mins, maxs] as number[][] };
+    const results = data();
+    if (!results) return null;
+
+    let baseTimes: number[] | null = null;
+    let isAggregated = false;
+
+    for (const r of results) {
+      if (r.aggregates && r.aggregates.length > 0) {
+        baseTimes = r.aggregates.map((a) => new Date(a.timestamp).getTime() / 1000);
+        isAggregated = true;
+        break;
+      }
+      if (r.samples && r.samples.length > 0) {
+        baseTimes = r.samples.map((s) => new Date(s.timestamp).getTime() / 1000);
+        break;
+      }
     }
-    if (d.samples && d.samples.length > 0) {
-      const times = d.samples.map((s) => new Date(s.timestamp).getTime() / 1000);
-      const vals = d.samples.map((s) => s.value);
-      return { series: [times, vals] as number[][] };
+    if (!baseTimes) return null;
+
+    const series: number[][] = [baseTimes];
+
+    for (const r of results) {
+      if (r.aggregates && r.aggregates.length > 0) {
+        series.push(r.aggregates.map((a) => a.avg));
+        if (isAggregated) {
+          series.push(r.aggregates.map((a) => a.min));
+          series.push(r.aggregates.map((a) => a.max));
+        }
+      } else if (r.samples && r.samples.length > 0) {
+        series.push(r.samples.map((s) => s.value));
+      } else {
+        series.push(baseTimes.map(() => null as unknown as number));
+      }
     }
-    return null;
+
+    return { series, isAggregated };
+  });
+
+  const chartTitle = createMemo(() => {
+    if (props.metrics.length === 1) {
+      const m = props.metrics[0];
+      return m.name + (m.unit ? ` (${m.unit})` : '');
+    }
+    const group = props.metrics[0].group;
+    if (group) return group;
+    return props.metrics.map((m) => m.name).join(' / ');
   });
 
   const renderChart = () => {
@@ -68,16 +115,81 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       if (chart) { chart.destroy(); chart = null; }
       return;
     }
-    const isAggregated = s.series.length > 2;
-    const specs: uPlot.Series[] = [
-      { label: 'Time' },
-      { label: props.metric.name + (props.metric.unit ? ` (${props.metric.unit})` : ''), stroke: '#38bdf8', width: 2, fill: 'rgba(56,189,248,0.08)', points: { show: true, size: 4 } },
+
+    const metrics = props.metrics;
+    const specs: uPlot.Series[] = [{ label: 'Time' }];
+
+    for (let i = 0; i < metrics.length; i++) {
+      const m = metrics[i];
+      const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
+      const scale = m.axis === 'right' ? 'y2' : 'y';
+      const label = m.name + (m.unit ? ` (${m.unit})` : '');
+
+      specs.push({
+        label,
+        stroke: color,
+        width: 2,
+        fill: hexToRgba(color, 0.06),
+        points: { show: true, size: 4 },
+        scale,
+      });
+
+      if (s.isAggregated) {
+        specs.push({
+          label: `${label} min`,
+          stroke: hexToRgba(color, 0.3),
+          width: 1,
+          fill: hexToRgba(color, 0.03),
+          points: { show: true, size: 3 },
+          scale,
+        });
+        specs.push({
+          label: `${label} max`,
+          stroke: hexToRgba(color, 0.3),
+          width: 1,
+          fill: hexToRgba(color, 0.03),
+          points: { show: true, size: 3 },
+          scale,
+        });
+      }
+    }
+
+    const scales: uPlot.Scales = {
+      x: { time: true },
+      y: { auto: true },
+    };
+    if (hasRightAxis()) {
+      scales.y2 = { auto: true };
+    }
+
+    const axes: uPlot.Axes = [
+      {
+        stroke: '#475569',
+        grid: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
+        ticks: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
+        label: '',
+        font: '11px "IBM Plex Mono", monospace',
+        space: 40,
+      },
+      {
+        stroke: '#475569',
+        grid: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
+        ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
+        label: '',
+        font: '11px "IBM Plex Mono", monospace',
+        space: 40,
+      },
     ];
-    if (isAggregated) {
-      specs.push(
-        { label: 'Min', stroke: 'rgba(56,189,248,0.3)', width: 1, fill: 'rgba(56,189,248,0.04)', points: { show: true, size: 3 } },
-        { label: 'Max', stroke: 'rgba(56,189,248,0.3)', width: 1, fill: 'rgba(56,189,248,0.04)', points: { show: true, size: 3 } },
-      );
+    if (hasRightAxis()) {
+      axes.push({
+        stroke: '#475569',
+        grid: { show: false },
+        ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
+        label: '',
+        font: '11px "IBM Plex Mono", monospace',
+        space: 40,
+        side: 3,
+      });
     }
 
     const opts: uPlot.Options = {
@@ -85,29 +197,9 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       height: 200,
       series: specs,
       cursor: { drag: { x: true, y: false } },
-      scales: {
-        x: { time: true },
-        y: { auto: true },
-      },
-      axes: [
-        {
-          stroke: '#475569',
-          grid: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
-          ticks: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
-          label: '',
-          font: '11px "IBM Plex Mono", monospace',
-          space: 40,
-        },
-        {
-          stroke: '#475569',
-          grid: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-          ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-          label: '',
-          font: '11px "IBM Plex Mono", monospace',
-          space: 40,
-        },
-      ],
-      legend: { show: false },
+      scales,
+      axes,
+      legend: { show: metrics.length > 1 },
       padding: [0, 0, 0, 0],
       hooks: {
         setCursor: [(self: uPlot) => {
@@ -117,24 +209,34 @@ const MetricChart: Component<MetricChartProps> = (props) => {
             return;
           }
           const ts = self.data[0][idx];
-          const val = self.data[1][idx];
-          if (val == null) {
-            if (tooltipEl) tooltipEl.style.display = 'none';
-            return;
-          }
+          if (ts == null) { tooltipEl.style.display = 'none'; return; }
           const date = new Date(ts * 1000);
           const timeStr = date.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
           const dateStr = date.toLocaleDateString('sk-SK', { day: 'numeric', month: 'numeric' });
-          const unit = props.metric.unit ? ` ${props.metric.unit}` : '';
-          tooltipEl!.textContent = `${dateStr} ${timeStr} · ${val}${unit}`;
-          tooltipEl!.style.display = 'block';
+
+          let html = `<div style="margin-bottom:3px;opacity:0.7">${dateStr} ${timeStr}</div>`;
+          let hasVal = false;
+          for (let i = 0; i < metrics.length; i++) {
+            const m = metrics[i];
+            const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
+            const valIdx = 1 + i * (s.isAggregated ? 3 : 1);
+            const val = self.data[valIdx]?.[idx];
+            if (val == null) continue;
+            hasVal = true;
+            const unit = m.unit ? ` ${m.unit}` : '';
+            html += `<div style="display:flex;align-items:center;gap:4px;margin-top:2px;"><span style="width:8px;height:8px;border-radius:2px;background:${color};display:inline-block;"></span><span>${m.name}: ${typeof val === 'number' ? val.toFixed(2) : val}${unit}</span></div>`;
+          }
+          if (!hasVal) { tooltipEl.style.display = 'none'; return; }
+
+          tooltipEl.innerHTML = html;
+          tooltipEl.style.display = 'block';
 
           const xPos = self.valToPos(ts, 'x', true);
-          const yPos = self.valToPos(val, 'y', true);
-          const left = Math.max(0, Math.min(xPos, self.width - 120));
+          const yPos = self.valToPos(self.data[1]?.[idx] ?? 0, 'y', true);
+          const left = Math.max(0, Math.min(xPos, self.width - 160));
           const top = Math.max(0, yPos - 30);
-          tooltipEl!.style.left = `${left}px`;
-          tooltipEl!.style.top = `${top}px`;
+          tooltipEl.style.left = `${left}px`;
+          tooltipEl.style.top = `${top}px`;
         }],
       },
     };
@@ -195,10 +297,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     <div class="space-y-2">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <span class="text-xs font-medium text-secondary">{props.metric.name}</span>
-          <Show when={props.metric.unit}>
-            <span class="text-[10px] text-muted">({props.metric.unit})</span>
-          </Show>
+          <span class="text-xs font-medium text-secondary">{chartTitle()}</span>
         </div>
         <div class="flex gap-1">
           {BUCKET_OPTIONS.map((opt) => (

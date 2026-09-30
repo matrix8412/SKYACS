@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/skydashnet/skyacs/internal/auth"
 	"github.com/skydashnet/skyacs/internal/models"
 )
+
+var colorHexRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 func (r *Router) handleListMetricDefinitions(w http.ResponseWriter, req *http.Request) {
 	defs, err := r.metricRepo.ListAll(req.Context())
@@ -195,6 +198,17 @@ func validateMetricDefinition(def *models.MetricDefinition) error {
 	}
 	if len(def.Description) > 512 {
 		return errors.New("description exceeds 512 characters")
+	}
+	if len(def.Group) > 64 {
+		return errors.New("group exceeds 64 characters")
+	}
+	if def.Color != "" && !colorHexRe.MatchString(def.Color) {
+		return errors.New("color must be a valid hex color (e.g. #38bdf8)")
+	}
+	switch def.Axis {
+	case "", "left", "right":
+	default:
+		return errors.New("axis must be 'left' or 'right'")
 	}
 	return nil
 }

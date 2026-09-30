@@ -4,6 +4,7 @@ import { Plus, Edit, Trash2, Activity } from 'lucide-solid';
 import { api, type MetricDefinition } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
+import ColorSwatch from '../components/ColorSwatch';
 import { useFeedback } from '../components/Feedback';
 import { useAuth } from '../lib/auth';
 
@@ -15,6 +16,9 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   unit: '',
   source: 'passive',
   active: true,
+  group: '',
+  color: '',
+  axis: 'left',
 };
 
 const MetricsSettings: Component = () => {
@@ -43,6 +47,9 @@ const MetricsSettings: Component = () => {
       unit: def.unit,
       source: def.source,
       active: def.active,
+      group: def.group,
+      color: def.color,
+      axis: def.axis,
     });
     setShowMetricModal(true);
   };
@@ -117,6 +124,7 @@ const MetricsSettings: Component = () => {
                   <th class="text-left px-3 py-2.5 font-semibold text-primary">Device Match</th>
                   <th class="text-left px-3 py-2.5 font-semibold text-primary">Source</th>
                   <th class="text-left px-3 py-2.5 font-semibold text-primary">Unit</th>
+                  <th class="text-left px-3 py-2.5 font-semibold text-primary">Group</th>
                   <th class="text-center px-3 py-2.5 font-semibold text-primary">Active</th>
                   <Show when={isFullAccess()}>
                     <th class="text-right px-3 py-2.5 font-semibold text-primary"></th>
@@ -139,6 +147,12 @@ const MetricsSettings: Component = () => {
                         <span class={`badge ${def.source === 'active' ? 'badge-warning' : def.source === 'universal' ? 'badge-success' : ''}`}>{def.source}</span>
                       </td>
                       <td class="px-3 py-2.5 text-secondary">{def.unit || '—'}</td>
+                      <td class="px-3 py-2.5 text-secondary">
+                        <div class="flex items-center gap-1.5">
+                          <span class="w-2.5 h-2.5 rounded-[2px] inline-block" style={{ background: def.color || '#475569' }} />
+                          <span class="text-xs">{def.group || '—'}</span>
+                        </div>
+                      </td>
                       <td class="px-3 py-2.5 text-center">
                         <span class={`badge ${def.active ? 'badge-success' : 'badge-muted'}`}>{def.active ? 'Yes' : 'No'}</span>
                       </td>
@@ -207,6 +221,23 @@ const MetricsSettings: Component = () => {
                 <option value="true">Yes — collect this metric</option>
                 <option value="false">No — paused</option>
               </select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label for="metric-group" class="block text-xs text-muted mb-1.5">Chart Group</label>
+                <input id="metric-group" type="text" value={metricForm().group} onInput={(e) => setMetricForm(f => ({ ...f, group: e.currentTarget.value }))} placeholder="e.g. throughput (optional)" class="input w-full" />
+              </div>
+              <div>
+                <label for="metric-axis" class="block text-xs text-muted mb-1.5">Y-Axis</label>
+                <select id="metric-axis" value={metricForm().axis} onChange={(e) => setMetricForm(f => ({ ...f, axis: e.currentTarget.value as 'left' | 'right' }))} class="input w-full">
+                  <option value="left">Left (default)</option>
+                  <option value="right">Right (secondary)</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-muted mb-1.5">Line Color</label>
+              <ColorSwatch value={metricForm().color} onChange={(c) => setMetricForm(f => ({ ...f, color: c }))} />
             </div>
           </div>
           <div class="flex gap-2 pt-4">

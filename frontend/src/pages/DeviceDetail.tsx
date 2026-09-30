@@ -2,7 +2,7 @@ import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
 import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity } from 'lucide-solid';
-import { api } from '../lib/api';
+import { api, type MetricDefinition } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
 import { useFeedback } from '../components/Feedback';
@@ -56,6 +56,28 @@ const DeviceDetail: Component = () => {
       const pattern = def.device_type_match.replace(/\*/g, '.*');
       return new RegExp(`^${pattern}$`).test(deviceType);
     });
+  });
+
+  const groupedMetrics = createMemo(() => {
+    const metrics = matchingMetrics();
+    const groups: MetricDefinition[][] = [];
+    const groupMap = new Map<string, MetricDefinition[]>();
+
+    for (const m of metrics) {
+      if (m.group) {
+        const key = m.group;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, []);
+        }
+        groupMap.get(key)!.push(m);
+      } else {
+        groups.push([m]);
+      }
+    }
+    for (const arr of groupMap.values()) {
+      groups.push(arr);
+    }
+    return groups;
   });
 
   const handleAddTag = async () => {
@@ -950,9 +972,9 @@ const DeviceDetail: Component = () => {
                   Metrics
                 </h2>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <For each={matchingMetrics()}>
-                    {(metric) => (
-                      <MetricChart serial={serial()} metric={metric} />
+                  <For each={groupedMetrics()}>
+                    {(group) => (
+                      <MetricChart serial={serial()} metrics={group} />
                     )}
                   </For>
                 </div>

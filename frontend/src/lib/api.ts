@@ -29,7 +29,7 @@ export interface User { id: number; username: string; role: 'full' | 'read'; cre
 export interface ProvisioningRule { id: number; parameter_name: string; parameter_value: string; parameter_type: string; phase: string; manufacturer: string; product_class: string; tag: string; enabled: boolean; description: string; add_object_path?: string; order: number }
 export interface AuditLog { id: number; user_id?: number; username: string; action: string; resource: string; status: number; ip_address: string; user_agent?: string; created_at: string }
 export interface BlockedDevice { id: number; serial_number: string; reason: string; created_by: string; created_at: string }
-export interface MetricDefinition { id: number; name: string; description: string; device_type_match: string; parameter_name: string; unit: string; source: 'passive' | 'active' | 'universal'; active: boolean; created_at: string; updated_at: string }
+export interface MetricDefinition { id: number; name: string; description: string; device_type_match: string; parameter_name: string; unit: string; source: 'passive' | 'active' | 'universal'; active: boolean; group: string; color: string; axis: 'left' | 'right'; created_at: string; updated_at: string }
 export interface MetricSample { device_id: number; metric_id: number; value: number; timestamp: string }
 export interface AggregatedMetric { timestamp: string; avg: number; min: number; max: number; count: number }
 
