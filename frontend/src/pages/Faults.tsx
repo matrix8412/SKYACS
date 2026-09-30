@@ -1,5 +1,5 @@
 import type { Component } from 'solid-js';
-import { createResource, createSignal, Show, For } from 'solid-js';
+import { createResource, createSignal, createMemo, Show, For } from 'solid-js';
 import { A } from '@solidjs/router';
 import { AlertTriangle, CheckCircle, Trash2, RefreshCw } from 'lucide-solid';
 import { api } from '../lib/api';
@@ -7,6 +7,8 @@ import { useAuth } from '../lib/auth';
 import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
+import ColumnFilter from '../components/ColumnFilter';
+import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const Faults: Component = () => {
   const { isFullAccess } = useAuth();
@@ -19,6 +21,24 @@ const Faults: Component = () => {
   );
 
   const [stats, { refetch: refetchStats }] = createResource(() => api.getFaultStats());
+  const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+
+  const getFilterValue = (fault: { serial_number: string; fault_code: string; fault_string: string; parameter_name: string; created_at: string; resolved: boolean }, colId: string): string => {
+    switch (colId) {
+      case 'serial_number': return fault.serial_number || '';
+      case 'fault_code': return fault.fault_code || '';
+      case 'fault_string': return fault.fault_string || '';
+      case 'parameter_name': return fault.parameter_name || '';
+      case 'created_at': return fault.created_at || '';
+      case 'resolved': return fault.resolved ? 'Resolved' : 'Active';
+      default: return '';
+    }
+  };
+
+  const filteredFaults = createMemo(() => {
+    const all = faults()?.faults || [];
+    return applyColumnFilters(all, columnFilters(), getFilterValue);
+  });
 
   const handleResolve = async (id: number) => {
     setPendingFault(id);
@@ -121,17 +141,41 @@ const Faults: Component = () => {
               <table class="data-table w-full text-sm min-w-[700px]">
                 <thead>
                   <tr class="border-b border-subtle bg-surface/50">
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">Device</th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">Code</th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">Message</th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden lg:table-cell">Parameter</th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden md:table-cell">Time</th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">Status</th>
+                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                      <div class="flex items-center gap-1.5">Device
+                        <ColumnFilter columnId="serial_number" label="Device" active={columnFilters()['serial_number'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['serial_number'] = s; else delete n['serial_number']; return n; }); }} />
+                      </div>
+                    </th>
+                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                      <div class="flex items-center gap-1.5">Code
+                        <ColumnFilter columnId="fault_code" label="Code" active={columnFilters()['fault_code'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['fault_code'] = s; else delete n['fault_code']; return n; }); }} />
+                      </div>
+                    </th>
+                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                      <div class="flex items-center gap-1.5">Message
+                        <ColumnFilter columnId="fault_string" label="Message" active={columnFilters()['fault_string'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['fault_string'] = s; else delete n['fault_string']; return n; }); }} />
+                      </div>
+                    </th>
+                    <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden lg:table-cell">
+                      <div class="flex items-center gap-1.5">Parameter
+                        <ColumnFilter columnId="parameter_name" label="Parameter" active={columnFilters()['parameter_name'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['parameter_name'] = s; else delete n['parameter_name']; return n; }); }} />
+                      </div>
+                    </th>
+                    <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden md:table-cell">
+                      <div class="flex items-center gap-1.5">Time
+                        <ColumnFilter columnId="created_at" label="Time" active={columnFilters()['created_at'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_at'] = s; else delete n['created_at']; return n; }); }} />
+                      </div>
+                    </th>
+                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                      <div class="flex items-center gap-1.5">Status
+                        <ColumnFilter columnId="resolved" label="Status" active={columnFilters()['resolved'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['resolved'] = s; else delete n['resolved']; return n; }); }} />
+                      </div>
+                    </th>
                     <th class="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <For each={faults()?.faults}>
+                  <For each={filteredFaults()}>
                     {(fault) => (
                       <tr class="border-t border-subtle/50 hover:bg-elevated/30">
                         <td class="px-4 py-3">

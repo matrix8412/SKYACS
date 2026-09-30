@@ -1,11 +1,13 @@
 import type { Component } from 'solid-js';
-import { createResource, createSignal, Show, For } from 'solid-js';
+import { createResource, createSignal, createMemo, Show, For } from 'solid-js';
 import { Upload, Trash2, HardDrive, Package } from 'lucide-solid';
 import { api, type Firmware } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
+import ColumnFilter from '../components/ColumnFilter';
+import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const Firmwares: Component = () => {
   const { isFullAccess } = useAuth();
@@ -13,6 +15,23 @@ const Firmwares: Component = () => {
   const [firmwares, { refetch }] = createResource(() => api.getFirmwares());
   const [uploading, setUploading] = createSignal(false);
   const [validation, setValidation] = createSignal<{ file?: string; version?: string }>({});
+  const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+
+  const getFilterValue = (fw: Firmware, colId: string): string => {
+    switch (colId) {
+      case 'filename': return fw.filename || '';
+      case 'version': return fw.version || '';
+      case 'manufacturer': return fw.manufacturer || '';
+      case 'file_size': return String(fw.file_size || '');
+      case 'created_at': return fw.created_at || '';
+      default: return '';
+    }
+  };
+
+  const filteredFirmwares = createMemo(() => {
+    const all = firmwares() || [];
+    return applyColumnFilters(all, columnFilters(), getFilterValue);
+  });
 
   const [formData, setFormData] = createSignal({
     version: '',
@@ -168,16 +187,36 @@ const Firmwares: Component = () => {
           <div class="overflow-x-auto"><table class="data-table w-full min-w-[720px]">
             <thead>
               <tr class="border-b border-subtle">
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">Filename</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">Version</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">Manufacturer</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">Size</th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">Uploaded</th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                  <div class="flex items-center gap-1.5">Filename
+                    <ColumnFilter columnId="filename" label="Filename" active={columnFilters()['filename'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['filename'] = s; else delete n['filename']; return n; }); }} />
+                  </div>
+                </th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                  <div class="flex items-center gap-1.5">Version
+                    <ColumnFilter columnId="version" label="Version" active={columnFilters()['version'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['version'] = s; else delete n['version']; return n; }); }} />
+                  </div>
+                </th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                  <div class="flex items-center gap-1.5">Manufacturer
+                    <ColumnFilter columnId="manufacturer" label="Manufacturer" active={columnFilters()['manufacturer'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['manufacturer'] = s; else delete n['manufacturer']; return n; }); }} />
+                  </div>
+                </th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                  <div class="flex items-center gap-1.5">Size
+                    <ColumnFilter columnId="file_size" label="Size" active={columnFilters()['file_size'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['file_size'] = s; else delete n['file_size']; return n; }); }} />
+                  </div>
+                </th>
+                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                  <div class="flex items-center gap-1.5">Uploaded
+                    <ColumnFilter columnId="created_at" label="Uploaded" active={columnFilters()['created_at'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_at'] = s; else delete n['created_at']; return n; }); }} />
+                  </div>
+                </th>
                 <th class="px-4 py-3 text-left text-xs font-medium text-muted">Actions</th>
               </tr>
             </thead>
             <tbody>
-              <For each={firmwares()}>
+              <For each={filteredFirmwares()}>
                 {(fw: Firmware) => (
                   <tr class="border-t border-subtle/50 hover:bg-elevated/30 transition-fast">
                     <td class="px-4 py-3 text-primary font-mono text-sm">{fw.filename}</td>

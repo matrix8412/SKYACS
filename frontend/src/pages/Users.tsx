@@ -1,5 +1,5 @@
 import type { Component } from 'solid-js';
-import { createResource, createSignal, Show, For } from 'solid-js';
+import { createResource, createSignal, createMemo, Show, For } from 'solid-js';
 import { Users, Trash2, Edit2, Plus } from 'lucide-solid';
 import { api, type User } from '../lib/api';
 import PageHeader from '../components/PageHeader';
@@ -7,6 +7,8 @@ import Dialog from '../components/Dialog';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import { useAuth } from '../lib/auth';
+import ColumnFilter from '../components/ColumnFilter';
+import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const UsersPage: Component = () => {
   const { isFullAccess } = useAuth();
@@ -21,6 +23,21 @@ const UsersPage: Component = () => {
   const [showUserModal, setShowUserModal] = createSignal(false);
   const [editingUser, setEditingUser] = createSignal<User | null>(null);
   const [userForm, setUserForm] = createSignal({ username: '', password: '', role: 'read' as 'full' | 'read' });
+  const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+
+  const getFilterValue = (user: User, colId: string): string => {
+    switch (colId) {
+      case 'username': return user.username || '';
+      case 'role': return user.role || '';
+      case 'last_login': return user.last_login || '';
+      default: return '';
+    }
+  };
+
+  const filteredUsers = createMemo(() => {
+    const all = users() || [];
+    return applyColumnFilters(all, columnFilters(), getFilterValue);
+  });
 
   const handleCreateUser = async () => {
     if (pendingAction()) return;
@@ -95,14 +112,26 @@ const UsersPage: Component = () => {
           <div class="overflow-x-auto"><table class="data-table w-full text-sm min-w-[620px]">
             <thead>
               <tr class="border-b border-subtle">
-                <th class="text-left py-2 text-xs text-muted font-medium">Username</th>
-                <th class="text-left py-2 text-xs text-muted font-medium">Role</th>
-                <th class="text-left py-2 text-xs text-muted font-medium">Last Login</th>
+                <th class="text-left py-2 text-xs text-muted font-medium">
+                  <div class="flex items-center gap-1.5">Username
+                    <ColumnFilter columnId="username" label="Username" active={columnFilters()['username'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['username'] = s; else delete n['username']; return n; }); }} />
+                  </div>
+                </th>
+                <th class="text-left py-2 text-xs text-muted font-medium">
+                  <div class="flex items-center gap-1.5">Role
+                    <ColumnFilter columnId="role" label="Role" active={columnFilters()['role'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['role'] = s; else delete n['role']; return n; }); }} />
+                  </div>
+                </th>
+                <th class="text-left py-2 text-xs text-muted font-medium">
+                  <div class="flex items-center gap-1.5">Last Login
+                    <ColumnFilter columnId="last_login" label="Last Login" active={columnFilters()['last_login'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['last_login'] = s; else delete n['last_login']; return n; }); }} />
+                  </div>
+                </th>
                 <th class="text-right py-2 text-xs text-muted font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
-              <For each={users()}>
+              <For each={filteredUsers()}>
                 {(u) => (
                   <tr class="border-b border-subtle/50">
                     <td class="py-2 text-primary">{u.username}</td>

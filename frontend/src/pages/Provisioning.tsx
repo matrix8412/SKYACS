@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, Show, For, type Component } from 'solid-js';
+import { createSignal, createEffect, createMemo, onMount, Show, For, type Component } from 'solid-js';
 import { Check, ChevronLeft, ChevronRight, Edit2, GripVertical, Plus, Settings as SettingsIcon, Settings2, Trash2, X } from 'lucide-solid';
 import { api, type ProvisioningRule } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -6,6 +6,8 @@ import { useFeedback } from '../components/Feedback';
 import Dialog from '../components/Dialog';
 import PageHeader from '../components/PageHeader';
 import { EmptyState, ResourceError } from '../components/ResourceState';
+import ColumnFilter from '../components/ColumnFilter';
+import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 interface ProvColumnConfig {
   id: string;
@@ -49,6 +51,25 @@ const Provisioning: Component = () => {
   const [showProvColumnSettings, setShowProvColumnSettings] = createSignal(false);
   const [provDraggedCol, setProvDraggedCol] = createSignal<string | null>(null);
   const [provDraggedRow, setProvDraggedRow] = createSignal<number | null>(null);
+  const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+
+  const getFilterValue = (rule: ProvisioningRule, colId: string): string => {
+    switch (colId) {
+      case 'parameter': return rule.parameter_name || '';
+      case 'value': return rule.parameter_value || '';
+      case 'manufacturer': return rule.manufacturer || '';
+      case 'product_class': return rule.product_class || '';
+      case 'tag': return rule.tag || '';
+      case 'phase': return rule.phase || '';
+      case 'status': return rule.enabled ? 'Active' : 'Disabled';
+      default: return '';
+    }
+  };
+
+  const filteredProvRules = createMemo(() => {
+    const all = provRules() ?? [];
+    return applyColumnFilters(all, columnFilters(), getFilterValue);
+  });
 
   onMount(() => {
     loadProvRules();
@@ -295,13 +316,19 @@ const Provisioning: Component = () => {
                   <tr class="border-b border-subtle">
                     <th class="py-2 pr-2 w-8 text-xs font-medium text-muted uppercase tracking-wide">#</th>
                     <For each={visibleProvColumns()}>
-                      {(col) => <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">{col.label}</th>}
+                      {(col) => (
+                        <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">
+                          <div class="flex items-center gap-1.5">{col.label}
+                            <ColumnFilter columnId={col.id} label={col.label} active={columnFilters()[col.id] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n[col.id] = s; else delete n[col.id]; return n; }); }} />
+                          </div>
+                        </th>
+                      )}
                     </For>
                     <th class="py-2 text-right text-xs font-medium text-muted uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <For each={provRules() ?? []}>
+                  <For each={filteredProvRules()}>
                     {(p, idx) => (
                       <tr
                         class={`border-b border-subtle/50 hover:bg-elevated/40 transition-colors ${provDraggedRow() === p.id ? 'opacity-50' : ''}`}

@@ -8,6 +8,8 @@ import Dialog from '../components/Dialog';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import MetricChart from '../components/MetricChart';
+import ColumnFilter from '../components/ColumnFilter';
+import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const DeviceDetail: Component = () => {
   const params = useParams<{ serial: string }>();
@@ -41,6 +43,8 @@ const DeviceDetail: Component = () => {
   const [factoryResetPassword, setFactoryResetPassword] = createSignal('');
   const [newTag, setNewTag] = createSignal('');
   const [tagsLoading, setTagsLoading] = createSignal(false);
+  const [paramColumnFilters, setParamColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [hostColumnFilters, setHostColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
 
   const deviceTags = createMemo(() => device()?.tags || []);
 
@@ -783,11 +787,35 @@ const DeviceDetail: Component = () => {
   };
 
   const filteredParams = () => {
+    let params = parameters() || [];
     const filter = paramFilter().toLowerCase();
-    if (!filter) return parameters() || [];
-    return (parameters() || []).filter(p => 
-      p.name.toLowerCase().includes(filter) || p.value.toLowerCase().includes(filter)
-    );
+    if (filter) {
+      params = params.filter(p => 
+        p.name.toLowerCase().includes(filter) || p.value.toLowerCase().includes(filter)
+      );
+    }
+    return applyColumnFilters(params, paramColumnFilters(), (p, colId) => {
+      switch (colId) {
+        case 'name': return p.name || '';
+        case 'value': return p.value || '';
+        default: return '';
+      }
+    });
+  };
+
+  const filteredHosts = () => {
+    const hosts = getHosts();
+    return applyColumnFilters(hosts, hostColumnFilters(), (h, colId) => {
+      switch (colId) {
+        case 'hostname': return h.hostname || '';
+        case 'ip': return h.ip || '';
+        case 'mac': return h.mac || '';
+        case 'interface': return h.interface || '';
+        case 'rssi': return h.rssi || '';
+        case 'uptime': return h.uptime || '';
+        default: return '';
+      }
+    });
   };
 
   const isSensitiveParameter = (name: string) => /password|passphrase|presharedkey|privatekey|secret/i.test(name);
@@ -1424,16 +1452,40 @@ const DeviceDetail: Component = () => {
                   <table class="data-table w-full text-sm min-w-[720px]">
                     <thead class="sticky top-0 bg-base z-10">
                       <tr class="border-b border-subtle bg-base">
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">Hostname</th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">IP address</th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">MAC address</th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">Interface</th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">Signal</th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">Uptime</th>
+                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Hostname
+                            <ColumnFilter columnId="hostname" label="Hostname" active={hostColumnFilters()['hostname'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['hostname'] = s; else delete n['hostname']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">IP address
+                            <ColumnFilter columnId="ip" label="IP address" active={hostColumnFilters()['ip'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['ip'] = s; else delete n['ip']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">MAC address
+                            <ColumnFilter columnId="mac" label="MAC address" active={hostColumnFilters()['mac'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['mac'] = s; else delete n['mac']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Interface
+                            <ColumnFilter columnId="interface" label="Interface" active={hostColumnFilters()['interface'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['interface'] = s; else delete n['interface']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Signal
+                            <ColumnFilter columnId="rssi" label="Signal" active={hostColumnFilters()['rssi'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['rssi'] = s; else delete n['rssi']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Uptime
+                            <ColumnFilter columnId="uptime" label="Uptime" active={hostColumnFilters()['uptime'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['uptime'] = s; else delete n['uptime']; return n; }); }} />
+                          </div>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
-                      <For each={getHosts()}>
+                      <For each={filteredHosts()}>
                         {(host) => (
                           <tr class="border-t border-subtle/50 hover:bg-elevated/30">
                             <td class="px-3 py-2 text-primary">{host.hostname}</td>
@@ -1530,8 +1582,16 @@ const DeviceDetail: Component = () => {
                   <table class="data-table w-full text-sm table-fixed">
                     <thead class="bg-base sticky top-0 z-10">
                       <tr class="bg-base">
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted w-3/5">Name</th>
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted w-2/5">Value</th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted w-3/5">
+                          <div class="flex items-center gap-1.5">Name
+                            <ColumnFilter columnId="name" label="Name" active={paramColumnFilters()['name'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['name'] = s; else delete n['name']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted w-2/5">
+                          <div class="flex items-center gap-1.5">Value
+                            <ColumnFilter columnId="value" label="Value" active={paramColumnFilters()['value'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['value'] = s; else delete n['value']; return n; }); }} />
+                          </div>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>

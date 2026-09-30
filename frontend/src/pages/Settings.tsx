@@ -1,5 +1,5 @@
 import type { Component } from 'solid-js';
-import { createSignal, createResource, Show, For } from 'solid-js';
+import { createSignal, createResource, createMemo, Show, For } from 'solid-js';
 import { Key, LogOut, Plus, Edit, Trash2, Save, Activity } from 'lucide-solid';
 import { api, type MetricDefinition } from '../lib/api';
 import PageHeader from '../components/PageHeader';
@@ -7,6 +7,8 @@ import Dialog from '../components/Dialog';
 import ColorSwatch from '../components/ColorSwatch';
 import { useFeedback } from '../components/Feedback';
 import { useAuth } from '../lib/auth';
+import ColumnFilter from '../components/ColumnFilter';
+import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> = {
   name: '',
@@ -37,6 +39,25 @@ const Settings: Component = () => {
   const [editingMetric, setEditingMetric] = createSignal<MetricDefinition | null>(null);
   const [showMetricModal, setShowMetricModal] = createSignal(false);
   const [metricForm, setMetricForm] = createSignal<Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>>(EMPTY_METRIC);
+  const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+
+  const getFilterValue = (def: MetricDefinition, colId: string): string => {
+    switch (colId) {
+      case 'name': return def.name || '';
+      case 'parameter_name': return def.parameter_name || '';
+      case 'device_type_match': return def.device_type_match || '';
+      case 'source': return def.source || '';
+      case 'unit': return def.unit || '';
+      case 'group': return def.group || '';
+      case 'active': return def.active ? 'Yes' : 'No';
+      default: return '';
+    }
+  };
+
+  const filteredMetrics = createMemo(() => {
+    const all = metrics() || [];
+    return applyColumnFilters(all, columnFilters(), getFilterValue);
+  });
 
   const openCreateMetric = () => {
     setEditingMetric(null);
@@ -184,20 +205,48 @@ const Settings: Component = () => {
             <table class="data-table w-full text-sm">
               <thead class="sticky top-0 bg-base z-10">
                 <tr class="border-b-2 border-subtle bg-base">
-                  <th class="text-left px-3 py-2.5 font-semibold text-primary">Name</th>
-                  <th class="text-left px-3 py-2.5 font-semibold text-primary">Parameter</th>
-                  <th class="text-left px-3 py-2.5 font-semibold text-primary">Device Match</th>
-                  <th class="text-left px-3 py-2.5 font-semibold text-primary">Source</th>
-                  <th class="text-left px-3 py-2.5 font-semibold text-primary">Unit</th>
-                  <th class="text-left px-3 py-2.5 font-semibold text-primary">Group</th>
-                  <th class="text-center px-3 py-2.5 font-semibold text-primary">Active</th>
+                  <th class="text-left px-3 py-2.5 font-semibold text-primary">
+                    <div class="flex items-center gap-1.5">Name
+                      <ColumnFilter columnId="name" label="Name" active={columnFilters()['name'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['name'] = s; else delete n['name']; return n; }); }} />
+                    </div>
+                  </th>
+                  <th class="text-left px-3 py-2.5 font-semibold text-primary">
+                    <div class="flex items-center gap-1.5">Parameter
+                      <ColumnFilter columnId="parameter_name" label="Parameter" active={columnFilters()['parameter_name'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['parameter_name'] = s; else delete n['parameter_name']; return n; }); }} />
+                    </div>
+                  </th>
+                  <th class="text-left px-3 py-2.5 font-semibold text-primary">
+                    <div class="flex items-center gap-1.5">Device Match
+                      <ColumnFilter columnId="device_type_match" label="Device Match" active={columnFilters()['device_type_match'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['device_type_match'] = s; else delete n['device_type_match']; return n; }); }} />
+                    </div>
+                  </th>
+                  <th class="text-left px-3 py-2.5 font-semibold text-primary">
+                    <div class="flex items-center gap-1.5">Source
+                      <ColumnFilter columnId="source" label="Source" active={columnFilters()['source'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['source'] = s; else delete n['source']; return n; }); }} />
+                    </div>
+                  </th>
+                  <th class="text-left px-3 py-2.5 font-semibold text-primary">
+                    <div class="flex items-center gap-1.5">Unit
+                      <ColumnFilter columnId="unit" label="Unit" active={columnFilters()['unit'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['unit'] = s; else delete n['unit']; return n; }); }} />
+                    </div>
+                  </th>
+                  <th class="text-left px-3 py-2.5 font-semibold text-primary">
+                    <div class="flex items-center gap-1.5">Group
+                      <ColumnFilter columnId="group" label="Group" active={columnFilters()['group'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['group'] = s; else delete n['group']; return n; }); }} />
+                    </div>
+                  </th>
+                  <th class="text-center px-3 py-2.5 font-semibold text-primary">
+                    <div class="flex items-center gap-1.5">Active
+                      <ColumnFilter columnId="active" label="Active" active={columnFilters()['active'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['active'] = s; else delete n['active']; return n; }); }} />
+                    </div>
+                  </th>
                   <Show when={isFullAccess()}>
                     <th class="text-right px-3 py-2.5 font-semibold text-primary"></th>
                   </Show>
                 </tr>
               </thead>
               <tbody>
-                <For each={metrics() || []}>
+                <For each={filteredMetrics()}>
                   {(def) => (
                     <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
                       <td class="px-3 py-2.5 text-primary font-medium">

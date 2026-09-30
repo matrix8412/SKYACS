@@ -7,6 +7,8 @@ import { useAuth } from '../lib/auth';
 import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
+import ColumnFilter from '../components/ColumnFilter';
+import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 interface ColumnConfig {
   id: string;
@@ -44,6 +46,7 @@ const Devices: Component = () => {
   const [columns, setColumns] = createSignal<ColumnConfig[]>([]);
   const [summoningAll, setSummoningAll] = createSignal(false);
   const [sortBy, setSortBy] = createSignal<{ column: string; direction: 'asc' | 'desc' } | null>(null);
+  const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const { isFullAccess } = useAuth();
   const { notify } = useFeedback();
   const limit = 20;
@@ -211,20 +214,39 @@ const Devices: Component = () => {
     }
   };
 
+  const getFilterValue = (device: Device, colId: string): string => {
+    switch (colId) {
+      case 'serial_number': return device.serial_number || '';
+      case 'manufacturer': return device.manufacturer || '';
+      case 'model': return device.model_name || device.product_class || '';
+      case 'product_class': return device.product_class || '';
+      case 'ip_address': return device.ip_address || '';
+      case 'rx_power': {
+        const rx = getRxPower(device);
+        return rx.value === '-' ? '' : rx.value;
+      }
+      case 'ppp_username': return getPppUsername(device) === '-' ? '' : getPppUsername(device);
+      case 'status': return device.online ? 'Online' : 'Offline';
+      case 'last_inform': return device.last_inform || '';
+      default: return '';
+    }
+  };
+
   const filteredDevices = createMemo(() => {
-    const devices = deviceList()?.devices || [];
+    let devices = deviceList()?.devices || [];
     const query = searchQuery().toLowerCase().trim();
-    if (!query) return devices;
-    
-    return devices.filter(d => {
-      return (
-        d.serial_number?.toLowerCase().includes(query) ||
-        d.manufacturer?.toLowerCase().includes(query) ||
-        d.model_name?.toLowerCase().includes(query) ||
-        d.product_class?.toLowerCase().includes(query) ||
-        d.ip_address?.toLowerCase().includes(query)
-      );
-    });
+    if (query) {
+      devices = devices.filter(d => {
+        return (
+          d.serial_number?.toLowerCase().includes(query) ||
+          d.manufacturer?.toLowerCase().includes(query) ||
+          d.model_name?.toLowerCase().includes(query) ||
+          d.product_class?.toLowerCase().includes(query) ||
+          d.ip_address?.toLowerCase().includes(query)
+        );
+      });
+    }
+    return applyColumnFilters(devices, columnFilters(), getFilterValue);
   });
 
   const sortedDevices = createMemo(() => {
@@ -413,7 +435,7 @@ const Devices: Component = () => {
                     
                     return (
                       <th class="px-4 py-2 text-left whitespace-nowrap" aria-sort={isSorted ? (currentSort?.direction === 'asc' ? 'ascending' : 'descending') : undefined}>
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1.5">
                           <button
                             onClick={(e) => {
                               e.preventDefault();
@@ -434,6 +456,19 @@ const Devices: Component = () => {
                               )}
                             </Show>
                           </button>
+                          <ColumnFilter
+                            columnId={col.id}
+                            label={col.label}
+                            active={columnFilters()[col.id] || null}
+                            onApply={(state) => {
+                              setColumnFilters((prev) => {
+                                const next = { ...prev };
+                                if (state) next[col.id] = state;
+                                else delete next[col.id];
+                                return next;
+                              });
+                            }}
+                          />
                         </div>
                       </th>
                     );
