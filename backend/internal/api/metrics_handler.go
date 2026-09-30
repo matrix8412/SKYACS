@@ -256,5 +256,10 @@ func validateMetricDefinition(def *models.MetricDefinition) error {
 	if def.Multiplier < 0 {
 		return errors.New("multiplier must be non-negative")
 	}
+	switch def.UnitScale {
+	case "", "auto", "bytes", "bits":
+	default:
+		return errors.New("unit_scale must be '', 'auto', 'bytes', or 'bits'")
+	}
 	return nil
 }

@@ -24,6 +24,7 @@ type MetricDefinition struct {
 	Axis            string    `json:"axis" gorm:"default:'left'"`
 	Transform       string    `json:"transform" gorm:"default:''"`
 	Multiplier      float64   `json:"multiplier" gorm:"default:1"`
+	UnitScale       string    `json:"unit_scale" gorm:"default:''"`
 	CreatedAt       time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt       time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

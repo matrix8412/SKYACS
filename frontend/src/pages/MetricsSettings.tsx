@@ -23,6 +23,7 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   axis: 'left',
   transform: '',
   multiplier: 1,
+  unit_scale: '',
 };
 
 const MetricsSettings: Component = () => {
@@ -75,6 +76,7 @@ const MetricsSettings: Component = () => {
       axis: def.axis,
       transform: def.transform,
       multiplier: def.multiplier,
+      unit_scale: def.unit_scale,
     });
     setShowMetricModal(true);
   };
@@ -303,6 +305,15 @@ const MetricsSettings: Component = () => {
               <div>
                 <label for="metric-multiplier" class="block text-xs text-muted mb-1.5">Multiplier</label>
                 <input id="metric-multiplier" type="number" min="0" step="any" value={metricForm().multiplier} onInput={(e) => setMetricForm(f => ({ ...f, multiplier: parseFloat(e.currentTarget.value) || 0 }))} placeholder="1" class="input w-full" />
+              </div>
+              <div>
+                <label for="metric-unit-scale" class="block text-xs text-muted mb-1.5">Unit Scale</label>
+                <select id="metric-unit-scale" value={metricForm().unit_scale} onChange={(e) => setMetricForm(f => ({ ...f, unit_scale: e.currentTarget.value }))} class="input w-full">
+                  <option value="">None (raw)</option>
+                  <option value="auto">Auto (K/M/G/T)</option>
+                  <option value="bytes">Bytes (KB/MB/GB/TB)</option>
+                  <option value="bits">Bits (Kb/Mb/Gb/Tb)</option>
+                </select>
               </div>
             </div>
           </div>

@@ -39,6 +39,37 @@ const hexToRgba = (hex: string, alpha: number): string => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
+interface UnitScale { divisor: number; suffix: string }
+
+const computeUnitScale = (values: number[], mode: string): UnitScale => {
+  const max = Math.max(0, ...values.filter((v) => v != null));
+  if (max === 0) return { divisor: 1, suffix: '' };
+
+  if (mode === 'auto') {
+    if (max >= 1e12) return { divisor: 1e12, suffix: 'T' };
+    if (max >= 1e9) return { divisor: 1e9, suffix: 'G' };
+    if (max >= 1e6) return { divisor: 1e6, suffix: 'M' };
+    if (max >= 1e3) return { divisor: 1e3, suffix: 'K' };
+    return { divisor: 1, suffix: '' };
+  }
+  if (mode === 'bytes') {
+    const kb = 1024, mb = 1024 ** 2, gb = 1024 ** 3, tb = 1024 ** 4;
+    if (max >= tb) return { divisor: tb, suffix: 'TB' };
+    if (max >= gb) return { divisor: gb, suffix: 'GB' };
+    if (max >= mb) return { divisor: mb, suffix: 'MB' };
+    if (max >= kb) return { divisor: kb, suffix: 'KB' };
+    return { divisor: 1, suffix: 'B' };
+  }
+  if (mode === 'bits') {
+    if (max >= 1e12) return { divisor: 1e12, suffix: 'Tb' };
+    if (max >= 1e9) return { divisor: 1e9, suffix: 'Gb' };
+    if (max >= 1e6) return { divisor: 1e6, suffix: 'Mb' };
+    if (max >= 1e3) return { divisor: 1e3, suffix: 'Kb' };
+    return { divisor: 1, suffix: 'b' };
+  }
+  return { divisor: 1, suffix: '' };
+};
+
 const MetricChart: Component<MetricChartProps> = (props) => {
   const [bucket, setBucket] = createSignal(getStoredBucket(props.serial));
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
@@ -80,22 +111,31 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     if (!baseTimes) return null;
 
     const series: number[][] = [baseTimes];
+    const suffixes: string[] = [];
 
-    for (const r of results) {
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      const m = props.metrics[i];
+      const scale = m.unit_scale ? computeUnitScale(
+        (r.aggregates?.map((a) => a.avg) ?? r.samples?.map((s) => s.value) ?? []),
+        m.unit_scale
+      ) : { divisor: 1, suffix: '' };
+      suffixes.push(scale.suffix);
+
       if (r.aggregates && r.aggregates.length > 0) {
-        series.push(r.aggregates.map((a) => a.avg));
+        series.push(r.aggregates.map((a) => a.avg / scale.divisor));
         if (isAggregated) {
-          series.push(r.aggregates.map((a) => a.min));
-          series.push(r.aggregates.map((a) => a.max));
+          series.push(r.aggregates.map((a) => a.min / scale.divisor));
+          series.push(r.aggregates.map((a) => a.max / scale.divisor));
         }
       } else if (r.samples && r.samples.length > 0) {
-        series.push(r.samples.map((s) => s.value));
+        series.push(r.samples.map((s) => s.value / scale.divisor));
       } else {
         series.push(baseTimes.map(() => null as unknown as number));
       }
     }
 
-    return { series, isAggregated };
+    return { series, isAggregated, suffixes };
   });
 
   const chartTitle = createMemo(() => {
@@ -123,7 +163,8 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       const m = metrics[i];
       const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
       const scale = m.axis === 'right' ? 'y2' : 'y';
-      const label = m.name + (m.unit ? ` (${m.unit})` : '');
+      const suffix = s.suffixes[i] ? ` ${s.suffixes[i]}` : '';
+      const label = m.name + (m.unit ? ` (${m.unit}${suffix})` : suffix ? ` (${suffix})` : '');
 
       specs.push({
         label,
@@ -224,7 +265,8 @@ const MetricChart: Component<MetricChartProps> = (props) => {
             const val = self.data[valIdx]?.[idx];
             if (val == null) continue;
             hasVal = true;
-            const unit = m.unit ? ` ${m.unit}` : '';
+            const suffix = s.suffixes[i] ? ` ${s.suffixes[i]}` : '';
+            const unit = m.unit ? ` ${m.unit}${suffix}` : suffix;
             html += `<div style="display:flex;align-items:center;gap:4px;margin-top:2px;"><span style="width:8px;height:8px;border-radius:2px;background:${color};display:inline-block;"></span><span>${m.name}: ${typeof val === 'number' ? val.toFixed(2) : val}${unit}</span></div>`;
           }
           if (!hasVal) { tooltipEl.style.display = 'none'; return; }
