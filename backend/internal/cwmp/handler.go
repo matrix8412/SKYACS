@@ -273,15 +273,20 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 
 		if h.parameterRepo != nil && deviceID > 0 && len(inform.ParameterList.Parameters) > 0 {
 			paramsToSave := make([]models.DeviceParameter, 0, len(inform.ParameterList.Parameters))
+			currentNames := make([]string, 0, len(inform.ParameterList.Parameters))
 			for _, parameter := range inform.ParameterList.Parameters {
 				paramsToSave = append(paramsToSave, models.DeviceParameter{
 					DeviceID: deviceID,
 					Name:     parameter.Name,
 					Value:    parameter.Value,
 				})
+				currentNames = append(currentNames, parameter.Name)
 			}
 			if err := h.parameterRepo.UpsertMany(ctx, deviceID, paramsToSave); err != nil {
 				log.Printf("Error saving Inform parameters: %v", err)
+			}
+			if err := h.parameterRepo.DeleteStale(ctx, deviceID, currentNames); err != nil {
+				log.Printf("Error deleting stale Inform parameters: %v", err)
 			}
 		}
 

@@ -130,6 +130,19 @@ func (r *ParameterRepository) UpsertWritable(ctx context.Context, deviceID int64
 	}).CreateInBatches(&entries, 500).Error
 }
 
+// DeleteStale removes parameters for a device that are no longer present in
+// the current Inform. This handles the case where a WAN connection (or other
+// object) is deleted on the CPE: its parameters stop appearing in subsequent
+// Inform messages, and the stale rows must be purged.
+func (r *ParameterRepository) DeleteStale(ctx context.Context, deviceID int64, currentNames []string) error {
+	if len(currentNames) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).
+		Where("device_id = ? AND name NOT IN ?", deviceID, currentNames).
+		Delete(&models.DeviceParameter{}).Error
+}
+
 func (r *ParameterRepository) GetByDeviceID(ctx context.Context, deviceID int64) ([]models.DeviceParameter, error) {
 	var params []models.DeviceParameter
 	err := r.db.WithContext(ctx).Where("device_id = ?", deviceID).

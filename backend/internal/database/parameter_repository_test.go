@@ -1,8 +1,11 @@
 package database
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/skydashnet/skyacs/internal/models"
 )
@@ -88,5 +91,106 @@ func TestSensitiveParameterDetection(t *testing.T) {
 	}
 	if IsSensitiveParameterName("Device.DeviceInfo.UpTime") {
 		t.Fatal("non-sensitive telemetry was classified as sensitive")
+	}
+}
+
+func TestDeleteStaleRemovesMissingParameters(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.AutoMigrate(&models.Device{}, &models.DeviceParameter{}); err != nil {
+		t.Fatalf("auto-migrate: %v", err)
+	}
+	ctx := context.Background()
+
+	serial := fmt.Sprintf("test-stale-%d", time.Now().UnixNano())
+	device := &models.Device{SerialNumber: serial, OUI: "00:00:03"}
+	if err := db.Create(device).Error; err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Where("device_id = ?", device.ID).Delete(&models.DeviceParameter{})
+		_ = db.Delete(&models.Device{}, device.ID)
+	})
+
+	repo := NewParameterRepository(db)
+
+	// Simulate an Inform with 3 WAN connections.
+	initialParams := []models.DeviceParameter{
+		{DeviceID: device.ID, Name: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name", Value: "WAN1"},
+		{DeviceID: device.ID, Name: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Name", Value: "WAN2"},
+		{DeviceID: device.ID, Name: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.3.WANIPConnection.1.Name", Value: "WAN3"},
+	}
+	if err := repo.UpsertMany(ctx, device.ID, initialParams); err != nil {
+		t.Fatalf("UpsertMany: %v", err)
+	}
+
+	// Verify all 3 are present.
+	all, err := repo.GetByDeviceID(ctx, device.ID)
+	if err != nil {
+		t.Fatalf("GetByDeviceID: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("expected 3 params, got %d", len(all))
+	}
+
+	// Simulate a second Inform where WAN3 was deleted on the CPE.
+	// Only WAN1 and WAN2 are reported.
+	currentNames := []string{
+		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name",
+		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Name",
+	}
+	if err := repo.DeleteStale(ctx, device.ID, currentNames); err != nil {
+		t.Fatalf("DeleteStale: %v", err)
+	}
+
+	// Verify WAN3 is gone, WAN1 and WAN2 remain.
+	remaining, err := repo.GetByDeviceID(ctx, device.ID)
+	if err != nil {
+		t.Fatalf("GetByDeviceID after delete: %v", err)
+	}
+	if len(remaining) != 2 {
+		t.Fatalf("expected 2 params after DeleteStale, got %d", len(remaining))
+	}
+	for _, p := range remaining {
+		if p.Name == "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.3.WANIPConnection.1.Name" {
+			t.Fatal("stale WAN3 parameter was not deleted")
+		}
+	}
+}
+
+func TestDeleteStaleEmptyListIsNoop(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.AutoMigrate(&models.Device{}, &models.DeviceParameter{}); err != nil {
+		t.Fatalf("auto-migrate: %v", err)
+	}
+	ctx := context.Background()
+
+	serial := fmt.Sprintf("test-stale-empty-%d", time.Now().UnixNano())
+	device := &models.Device{SerialNumber: serial, OUI: "00:00:04"}
+	if err := db.Create(device).Error; err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Where("device_id = ?", device.ID).Delete(&models.DeviceParameter{})
+		_ = db.Delete(&models.Device{}, device.ID)
+	})
+
+	repo := NewParameterRepository(db)
+	params := []models.DeviceParameter{
+		{DeviceID: device.ID, Name: "Device.DeviceInfo.SoftwareVersion", Value: "1.0"},
+	}
+	if err := repo.UpsertMany(ctx, device.ID, params); err != nil {
+		t.Fatalf("UpsertMany: %v", err)
+	}
+
+	// Empty currentNames must not delete anything (safety guard).
+	if err := repo.DeleteStale(ctx, device.ID, nil); err != nil {
+		t.Fatalf("DeleteStale(nil): %v", err)
+	}
+	remaining, err := repo.GetByDeviceID(ctx, device.ID)
+	if err != nil {
+		t.Fatalf("GetByDeviceID: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("expected 1 param (no-op), got %d", len(remaining))
 	}
 }
