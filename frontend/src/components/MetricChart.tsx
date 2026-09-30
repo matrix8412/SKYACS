@@ -182,6 +182,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     ];
     if (hasRightAxis()) {
       axes.push({
+        scale: 'y2',
         stroke: '#475569',
         grid: { show: false },
         ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },

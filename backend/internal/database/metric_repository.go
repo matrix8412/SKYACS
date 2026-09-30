@@ -58,6 +58,71 @@ func (r *MetricRepository) BatchInsert(ctx context.Context, samples []models.Met
 	return r.db.WithContext(ctx).CreateInBatches(&samples, 500).Error
 }
 
+// GetByID returns a single metric definition by its ID.
+func (r *MetricRepository) GetByID(ctx context.Context, id int64) (*models.MetricDefinition, error) {
+	var def models.MetricDefinition
+	err := r.db.WithContext(ctx).First(&def, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &def, nil
+}
+
+// QueryRawRate returns raw metric samples with rate (delta/time) computed via LAG().
+// Counter resets (value < previous) are clamped to 0.
+func (r *MetricRepository) QueryRawRate(ctx context.Context, deviceID, metricID int64, from, to time.Time, multiplier float64) ([]models.MetricSample, error) {
+	var samples []models.MetricSample
+	query := `
+		SELECT timestamp,
+			CASE
+				WHEN LAG(value) OVER w IS NULL THEN 0
+				WHEN value < LAG(value) OVER w THEN 0
+				ELSE (value - LAG(value) OVER w)
+					 / GREATEST(EXTRACT(EPOCH FROM (timestamp - LAG(timestamp) OVER w)), 1)
+					 * $4
+			END AS value
+		FROM metric_samples
+		WHERE device_id = $1 AND metric_id = $2 AND timestamp BETWEEN $3 AND (
+			SELECT MAX(timestamp) FROM metric_samples WHERE device_id = $1 AND metric_id = $2 AND timestamp BETWEEN $3 AND $5
+		)
+		WINDOW w AS (ORDER BY timestamp)
+		ORDER BY timestamp ASC`
+	err := r.db.WithContext(ctx).Raw(query, deviceID, metricID, from, multiplier, to).Scan(&samples).Error
+	return samples, err
+}
+
+// QueryAggregatedRate returns aggregated metric data with rate computed as
+// (max_value - min_value) / bucket_duration * multiplier.
+func (r *MetricRepository) QueryAggregatedRate(ctx context.Context, deviceID, metricID int64, from, to time.Time, bucket string, multiplier float64) ([]models.AggregatedMetric, error) {
+	table := caTableForBucket(bucket)
+	if table == "" {
+		return nil, fmt.Errorf("unsupported bucket: %s", bucket)
+	}
+	var duration float64
+	switch bucket {
+	case "5min":
+		duration = 300
+	case "1h":
+		duration = 3600
+	case "1d":
+		duration = 86400
+	default:
+		return nil, fmt.Errorf("unsupported bucket: %s", bucket)
+	}
+	var rows []models.AggregatedMetric
+	query := fmt.Sprintf(`
+		SELECT time_bucket AS "timestamp",
+			GREATEST(max_value - min_value, 0) / $4 * $5 AS "avg",
+			0 AS "min",
+			0 AS "max",
+			0 AS "count"
+		FROM %s
+		WHERE device_id = $1 AND metric_id = $2 AND time_bucket BETWEEN $3 AND $6
+		ORDER BY time_bucket ASC`, table)
+	err := r.db.WithContext(ctx).Raw(query, deviceID, metricID, from, duration, multiplier, to).Scan(&rows).Error
+	return rows, err
+}
+
 // QueryRaw returns raw metric samples for a device within a time range.
 func (r *MetricRepository) QueryRaw(ctx context.Context, deviceID, metricID int64, from, to time.Time) ([]models.MetricSample, error) {
 	var samples []models.MetricSample

@@ -19,6 +19,8 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   group: '',
   color: '',
   axis: 'left',
+  transform: '',
+  multiplier: 1,
 };
 
 const Settings: Component = () => {
@@ -55,6 +57,8 @@ const Settings: Component = () => {
       group: def.group,
       color: def.color,
       axis: def.axis,
+      transform: def.transform,
+      multiplier: def.multiplier,
     });
     setShowMetricModal(true);
   };
@@ -311,6 +315,19 @@ const Settings: Component = () => {
             <div>
               <label class="block text-xs text-muted mb-1.5">Line Color</label>
               <ColorSwatch value={metricForm().color} onChange={(c) => setMetricForm(f => ({ ...f, color: c }))} />
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label for="metric-transform" class="block text-xs text-muted mb-1.5">Transform</label>
+                <select id="metric-transform" value={metricForm().transform} onChange={(e) => setMetricForm(f => ({ ...f, transform: e.currentTarget.value }))} class="input w-full">
+                  <option value="">None (raw value)</option>
+                  <option value="rate">Rate (delta / time)</option>
+                </select>
+              </div>
+              <div>
+                <label for="metric-multiplier" class="block text-xs text-muted mb-1.5">Multiplier</label>
+                <input id="metric-multiplier" type="number" min="0" step="any" value={metricForm().multiplier} onInput={(e) => setMetricForm(f => ({ ...f, multiplier: parseFloat(e.currentTarget.value) || 0 }))} placeholder="1" class="input w-full" />
+              </div>
             </div>
           </div>
         </Dialog>

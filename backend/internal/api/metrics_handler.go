@@ -150,13 +150,51 @@ func (r *Router) handleGetDeviceMetrics(w http.ResponseWriter, req *http.Request
 		}
 	}
 
+	// Fetch metric definition to check for rate transform
+	def, defErr := r.metricRepo.GetByID(req.Context(), metricID)
+	isRate := defErr == nil && def.Transform == "rate"
+	multiplier := 1.0
+	if isRate {
+		multiplier = def.Multiplier
+		if multiplier <= 0 {
+			multiplier = 1.0
+		}
+	}
+
 	if bucket == "raw" {
+		if isRate {
+			samples, err := r.metricRepo.QueryRawRate(req.Context(), device.ID, metricID, from, to, multiplier)
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "Failed to query metric samples")
+				return
+			}
+			respondJSON(w, http.StatusOK, map[string]interface{}{"samples": samples})
+			return
+		}
 		samples, err := r.metricRepo.QueryRaw(req.Context(), device.ID, metricID, from, to)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "Failed to query metric samples")
 			return
 		}
 		respondJSON(w, http.StatusOK, map[string]interface{}{"samples": samples})
+		return
+	}
+
+	if isRate {
+		rows, err := r.metricRepo.QueryAggregatedRate(req.Context(), device.ID, metricID, from, to, bucket, multiplier)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "Failed to query aggregated metrics")
+			return
+		}
+		// Fallback: if the CA returned no rows, try raw rate samples.
+		if len(rows) == 0 {
+			samples, rawErr := r.metricRepo.QueryRawRate(req.Context(), device.ID, metricID, from, to, multiplier)
+			if rawErr == nil && len(samples) > 0 {
+				respondJSON(w, http.StatusOK, map[string]interface{}{"samples": samples})
+				return
+			}
+		}
+		respondJSON(w, http.StatusOK, map[string]interface{}{"aggregates": rows})
 		return
 	}
 
@@ -209,6 +247,14 @@ func validateMetricDefinition(def *models.MetricDefinition) error {
 	case "", "left", "right":
 	default:
 		return errors.New("axis must be 'left' or 'right'")
+	}
+	switch def.Transform {
+	case "", "rate":
+	default:
+		return errors.New("transform must be '' or 'rate'")
+	}
+	if def.Multiplier < 0 {
+		return errors.New("multiplier must be non-negative")
 	}
 	return nil
 }
