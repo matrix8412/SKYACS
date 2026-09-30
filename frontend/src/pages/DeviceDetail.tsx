@@ -24,7 +24,7 @@ const DeviceDetail: Component = () => {
   const [device, { refetch: refetchDevice }] = createResource(serial, api.getDevice);
   const [parameters, { refetch: refetchParams }] = createResource(serial, api.getDeviceParameters);
   const [tasks, { refetch: refetchTasks }] = createResource(serial, api.getDeviceTasks);
-  const [deviceFaults, { refetch: refetchDeviceFaults }] = createResource(serial, api.getDeviceFaults);
+  const [deviceFaults] = createResource(serial, api.getDeviceFaults);
   const [metricDefs] = createResource(api.getMetricDefinitions);
   const [taskPage, setTaskPage] = createSignal(0);
   const TASK_PAGE_SIZE = 10;
