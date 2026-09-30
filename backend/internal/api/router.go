@@ -130,6 +130,7 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("DELETE /device/{serial}", auth.RequireFullAccess(r.handleDeleteDeviceBySerial))
 	apiMux.HandleFunc("GET /device/{serial}/parameters", r.handleGetDeviceParametersBySerial)
 	apiMux.HandleFunc("GET /device/{serial}/tasks", r.handleGetDeviceTasksBySerial)
+	apiMux.HandleFunc("GET /device/{serial}/faults", r.handleGetDeviceFaultsBySerial)
 	apiMux.HandleFunc("PUT /device/{serial}/tags", auth.RequireFullAccess(r.handleSetDeviceTagsBySerial))
 	apiMux.HandleFunc("POST /device/{serial}/get-parameters", auth.RequireFullAccess(r.handleGetParameterValuesBySerial))
 	apiMux.HandleFunc("POST /device/{serial}/set-parameters", auth.RequireFullAccess(r.handleSetParameterValuesBySerial))
@@ -1339,6 +1340,20 @@ func (r *Router) handleGetDeviceTasksBySerial(w http.ResponseWriter, req *http.R
 		return
 	}
 	respondJSON(w, http.StatusOK, tasks)
+}
+
+func (r *Router) handleGetDeviceFaultsBySerial(w http.ResponseWriter, req *http.Request) {
+	device, err := r.parseDeviceBySerial(req)
+	if err != nil || device == nil {
+		respondError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+	faults, err := r.faultRepo.GetByDeviceID(req.Context(), device.ID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to get faults")
+		return
+	}
+	respondJSON(w, http.StatusOK, faults)
 }
 
 func (r *Router) handleSetDeviceTagsBySerial(w http.ResponseWriter, req *http.Request) {

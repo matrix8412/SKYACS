@@ -188,7 +188,7 @@ const Faults: Component = () => {
                     {(fault) => (
                       <tr class="border-t border-subtle/50 hover:bg-elevated/30">
                         <td class="px-4 py-3">
-                          <A href={`/device/${fault.serial_number}`} class="text-sky-400 hover:underline font-mono text-xs">
+                          <A href={`/device/${fault.serial_number}?tab=faults`} class="text-sky-400 hover:underline font-mono text-xs">
                             {fault.serial_number}
                           </A>
                         </td>

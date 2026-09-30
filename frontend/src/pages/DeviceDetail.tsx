@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity } from 'lucide-solid';
+import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle } from 'lucide-solid';
 import { api, type MetricDefinition } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
@@ -19,11 +19,12 @@ const DeviceDetail: Component = () => {
   const { confirm } = useFeedback();
   const serial = () => params.serial || '';
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = () => searchParams.tab === 'metrics' || searchParams.tab === 'tasks' || searchParams.tab === 'credentials' || searchParams.tab === 'hosts' ? searchParams.tab : 'overview';
+  const activeTab = () => searchParams.tab === 'metrics' || searchParams.tab === 'tasks' || searchParams.tab === 'credentials' || searchParams.tab === 'hosts' || searchParams.tab === 'faults' ? searchParams.tab : 'overview';
 
   const [device, { refetch: refetchDevice }] = createResource(serial, api.getDevice);
   const [parameters, { refetch: refetchParams }] = createResource(serial, api.getDeviceParameters);
   const [tasks, { refetch: refetchTasks }] = createResource(serial, api.getDeviceTasks);
+  const [deviceFaults, { refetch: refetchDeviceFaults }] = createResource(serial, api.getDeviceFaults);
   const [metricDefs] = createResource(api.getMetricDefinitions);
   const [taskPage, setTaskPage] = createSignal(0);
   const TASK_PAGE_SIZE = 10;
@@ -33,6 +34,15 @@ const DeviceDetail: Component = () => {
     return all.slice(start, start + TASK_PAGE_SIZE);
   });
   const taskTotalPages = createMemo(() => Math.ceil((tasks()?.length || 0) / TASK_PAGE_SIZE));
+  const [faultPage, setFaultPage] = createSignal(0);
+  const DEVICE_FAULT_PAGE_SIZE = 10;
+  const pagedDeviceFaults = createMemo(() => {
+    const all = deviceFaults() || [];
+    const start = faultPage() * DEVICE_FAULT_PAGE_SIZE;
+    return all.slice(start, start + DEVICE_FAULT_PAGE_SIZE);
+  });
+  const deviceFaultTotalPages = createMemo(() => Math.ceil((deviceFaults()?.length || 0) / DEVICE_FAULT_PAGE_SIZE));
+  const unresolvedFaultCount = createMemo(() => (deviceFaults() || []).filter(f => !f.resolved).length);
 
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [message, setMessage] = createSignal<{ type: 'success' | 'error'; text: string; detail?: string } | null>(null);
@@ -891,8 +901,19 @@ const DeviceDetail: Component = () => {
         <button role="tab" class={`tab-btn ${activeTab() === 'overview' ? 'is-active' : ''}`} aria-selected={activeTab() === 'overview'} onClick={() => setSearchParams({ tab: null })}>Overview</button>
         <button role="tab" class={`tab-btn ${activeTab() === 'metrics' ? 'is-active' : ''}`} aria-selected={activeTab() === 'metrics'} onClick={() => setSearchParams({ tab: 'metrics' })}>Metrics</button>
         <button role="tab" class={`tab-btn ${activeTab() === 'tasks' ? 'is-active' : ''}`} aria-selected={activeTab() === 'tasks'} onClick={() => setSearchParams({ tab: 'tasks' })}>Tasks</button>
+        <button role="tab" class={`tab-btn ${activeTab() === 'faults' ? 'is-active' : ''}`} aria-selected={activeTab() === 'faults'} onClick={() => setSearchParams({ tab: 'faults' })}>
+          CWMP Faults
+          <Show when={unresolvedFaultCount() > 0}>
+            <span class="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none">{unresolvedFaultCount()}</span>
+          </Show>
+        </button>
         <button role="tab" class={`tab-btn ${activeTab() === 'credentials' ? 'is-active' : ''}`} aria-selected={activeTab() === 'credentials'} onClick={() => setSearchParams({ tab: 'credentials' })}>Credentials</button>
-        <button role="tab" class={`tab-btn ${activeTab() === 'hosts' ? 'is-active' : ''}`} aria-selected={activeTab() === 'hosts'} onClick={() => setSearchParams({ tab: 'hosts' })}>Connected Hosts</button>
+        <button role="tab" class={`tab-btn ${activeTab() === 'hosts' ? 'is-active' : ''}`} aria-selected={activeTab() === 'hosts'} onClick={() => setSearchParams({ tab: 'hosts' })}>
+          Connected Hosts
+          <Show when={getHosts().length > 0}>
+            <span class="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold leading-none">{getHosts().length}</span>
+          </Show>
+        </button>
       </nav>
 
       <Show when={message()}>
@@ -1564,6 +1585,67 @@ const DeviceDetail: Component = () => {
                   <Pagination page={taskPage()} totalPages={taskTotalPages()} totalItems={tasks()?.length || 0} pageSize={TASK_PAGE_SIZE} onPageChange={setTaskPage} />
                 </div>
               </Show>
+              </Show>
+            </div>
+            </Show>
+
+            <Show when={activeTab() === 'faults'}>
+            {/* Row 5.5: CWMP Faults */}
+            <div class="card overflow-hidden">
+              <div class="p-5 border-b border-subtle">
+                <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
+                  <AlertTriangle size={14} />
+                  CWMP Faults ({deviceFaults()?.length || 0})
+                </h2>
+              </div>
+              <Show when={deviceFaults.loading} fallback={
+                <Show when={(deviceFaults()?.length || 0) > 0} fallback={
+                  <EmptyState compact icon={<AlertTriangle size={22} />} title="No CWMP faults recorded for this device" description="Protocol faults will appear here when the device reports a CWMP error during a session." />
+                }>
+                  <div class="table-scroll">
+                    <table class="data-table w-full text-sm min-w-[680px]">
+                      <thead class="bg-base sticky top-0 z-10">
+                        <tr class="bg-base">
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Code</th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Message</th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Parameter</th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Time</th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <For each={pagedDeviceFaults()}>
+                          {(fault) => (
+                            <tr class="border-t border-subtle/50 hover:bg-elevated/30">
+                              <td class="px-4 py-2">
+                                <span class={`font-mono font-semibold ${parseInt(fault.fault_code) >= 9000 ? 'text-rose-400' : parseInt(fault.fault_code) >= 8000 ? 'text-amber-400' : 'text-sky-400'}`}>
+                                  {fault.fault_code}
+                                </span>
+                              </td>
+                              <td class="px-4 py-2 text-secondary max-w-xs truncate" title={fault.fault_string}>
+                                {fault.fault_string.length > 50 ? fault.fault_string.slice(0, 50) + '...' : fault.fault_string}
+                              </td>
+                              <td class="px-4 py-2 text-muted font-mono text-xs max-w-xs truncate" title={fault.parameter_name}>
+                                {fault.parameter_name || '-'}
+                              </td>
+                              <td class="px-4 py-2 text-muted text-xs">{formatDate(fault.created_at)}</td>
+                              <td class="px-4 py-2">
+                                <span class={`badge ${fault.resolved ? 'badge-success' : 'badge-error'}`}>
+                                  {fault.resolved ? 'Resolved' : 'Active'}
+                                </span>
+                              </td>
+                            </tr>
+                          )}
+                        </For>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="px-4 py-3">
+                    <Pagination page={faultPage()} totalPages={deviceFaultTotalPages()} totalItems={deviceFaults()?.length || 0} pageSize={DEVICE_FAULT_PAGE_SIZE} onPageChange={setFaultPage} />
+                  </div>
+                </Show>
+              }>
+                <div class="p-5 space-y-2" aria-label="Loading CWMP faults"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-full" /></div>
               </Show>
             </div>
             </Show>
