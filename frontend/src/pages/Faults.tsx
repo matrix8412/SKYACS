@@ -8,6 +8,7 @@ import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const Faults: Component = () => {
@@ -22,6 +23,8 @@ const Faults: Component = () => {
 
   const [stats, { refetch: refetchStats }] = createResource(() => api.getFaultStats());
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [faultPage, setFaultPage] = createSignal(0);
+  const FAULT_PAGE_SIZE = 20;
 
   const getFilterValue = (fault: { serial_number: string; fault_code: string; fault_string: string; parameter_name: string; created_at: string; resolved: boolean }, colId: string): string => {
     switch (colId) {
@@ -39,6 +42,12 @@ const Faults: Component = () => {
     const all = faults()?.faults || [];
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
+  const pagedFaults = createMemo(() => {
+    const all = filteredFaults();
+    const start = faultPage() * FAULT_PAGE_SIZE;
+    return all.slice(start, start + FAULT_PAGE_SIZE);
+  });
+  const faultTotalPages = createMemo(() => Math.ceil(filteredFaults().length / FAULT_PAGE_SIZE));
 
   const handleResolve = async (id: number) => {
     setPendingFault(id);
@@ -137,7 +146,7 @@ const Faults: Component = () => {
               action={filter() !== 'all' ? <button type="button" class="btn btn-secondary" onClick={() => setFilter('all')}>Show all fault records</button> : undefined}
             />
           }>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto table-scroll">
               <table class="data-table w-full text-sm min-w-[700px]">
                 <thead>
                   <tr class="border-b border-subtle bg-surface/50">
@@ -175,7 +184,7 @@ const Faults: Component = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  <For each={filteredFaults()}>
+                  <For each={pagedFaults()}>
                     {(fault) => (
                       <tr class="border-t border-subtle/50 hover:bg-elevated/30">
                         <td class="px-4 py-3">
@@ -229,6 +238,9 @@ const Faults: Component = () => {
                   </For>
                 </tbody>
               </table>
+            </div>
+            <div class="px-4 py-3">
+              <Pagination page={faultPage()} totalPages={faultTotalPages()} totalItems={filteredFaults().length} pageSize={FAULT_PAGE_SIZE} onPageChange={setFaultPage} />
             </div>
           </Show>
         </Show>

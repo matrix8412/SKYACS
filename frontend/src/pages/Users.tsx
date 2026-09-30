@@ -8,6 +8,7 @@ import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import { useAuth } from '../lib/auth';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const UsersPage: Component = () => {
@@ -24,6 +25,8 @@ const UsersPage: Component = () => {
   const [editingUser, setEditingUser] = createSignal<User | null>(null);
   const [userForm, setUserForm] = createSignal({ username: '', password: '', role: 'read' as 'full' | 'read' });
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [userPage, setUserPage] = createSignal(0);
+  const USER_PAGE_SIZE = 15;
 
   const getFilterValue = (user: User, colId: string): string => {
     switch (colId) {
@@ -38,6 +41,12 @@ const UsersPage: Component = () => {
     const all = users() || [];
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
+  const pagedUsers = createMemo(() => {
+    const all = filteredUsers();
+    const start = userPage() * USER_PAGE_SIZE;
+    return all.slice(start, start + USER_PAGE_SIZE);
+  });
+  const userTotalPages = createMemo(() => Math.ceil(filteredUsers().length / USER_PAGE_SIZE));
 
   const handleCreateUser = async () => {
     if (pendingAction()) return;
@@ -109,7 +118,7 @@ const UsersPage: Component = () => {
         <Show when={users.error}><ResourceError title="Operator accounts are unavailable" description="SKYACS could not read the account directory. Retry before changing access." onRetry={() => refetchUsers()} /></Show>
         <Show when={users.loading}><div class="space-y-3"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-4/5" /></div></Show>
         <Show when={!users.loading && !users.error && (users()?.length ?? 0) > 0}>
-          <div class="overflow-x-auto"><table class="data-table w-full text-sm min-w-[620px]">
+          <div class="overflow-x-auto table-scroll"><table class="data-table w-full text-sm min-w-[620px]">
             <thead>
               <tr class="border-b border-subtle">
                 <th class="text-left py-2 text-xs text-muted font-medium">
@@ -131,7 +140,7 @@ const UsersPage: Component = () => {
               </tr>
             </thead>
             <tbody>
-              <For each={filteredUsers()}>
+              <For each={pagedUsers()}>
                 {(u) => (
                   <tr class="border-b border-subtle/50">
                     <td class="py-2 text-primary">{u.username}</td>
@@ -158,6 +167,9 @@ const UsersPage: Component = () => {
               </For>
             </tbody>
           </table></div>
+          <div class="mt-3">
+            <Pagination page={userPage()} totalPages={userTotalPages()} totalItems={filteredUsers().length} pageSize={USER_PAGE_SIZE} onPageChange={setUserPage} />
+          </div>
         </Show>
         <Show when={!users.loading && !users.error && (users()?.length ?? 0) === 0}><EmptyState compact title="No additional operators exist" description="Create a named operator account instead of sharing administrative credentials." action={<button type="button" class="btn btn-primary" onClick={openCreateUser}>Add operator</button>} /></Show>
       </div>

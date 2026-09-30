@@ -7,6 +7,7 @@ import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const Firmwares: Component = () => {
@@ -16,6 +17,8 @@ const Firmwares: Component = () => {
   const [uploading, setUploading] = createSignal(false);
   const [validation, setValidation] = createSignal<{ file?: string; version?: string }>({});
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [fwPage, setFwPage] = createSignal(0);
+  const FW_PAGE_SIZE = 15;
 
   const getFilterValue = (fw: Firmware, colId: string): string => {
     switch (colId) {
@@ -32,6 +35,12 @@ const Firmwares: Component = () => {
     const all = firmwares() || [];
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
+  const pagedFirmwares = createMemo(() => {
+    const all = filteredFirmwares();
+    const start = fwPage() * FW_PAGE_SIZE;
+    return all.slice(start, start + FW_PAGE_SIZE);
+  });
+  const fwTotalPages = createMemo(() => Math.ceil(filteredFirmwares().length / FW_PAGE_SIZE));
 
   const [formData, setFormData] = createSignal({
     version: '',
@@ -184,7 +193,7 @@ const Firmwares: Component = () => {
         <Show when={!firmwares.loading && !firmwares.error && (firmwares()?.length || 0) > 0} fallback={!firmwares.loading && !firmwares.error ?
           <EmptyState icon={<HardDrive size={22} />} title="No firmware artifacts are stored" description={isFullAccess() ? 'Upload a vendor firmware file with an exact version and compatibility scope before creating a deployment task.' : 'A full-access operator must upload and validate an artifact before it can be selected for deployment.'} /> : undefined
         }>
-          <div class="overflow-x-auto"><table class="data-table w-full min-w-[720px]">
+          <div class="overflow-x-auto table-scroll"><table class="data-table w-full min-w-[720px]">
             <thead>
               <tr class="border-b border-subtle">
                 <th class="px-4 py-3 text-left text-xs font-medium text-muted">
@@ -216,7 +225,7 @@ const Firmwares: Component = () => {
               </tr>
             </thead>
             <tbody>
-              <For each={filteredFirmwares()}>
+              <For each={pagedFirmwares()}>
                 {(fw: Firmware) => (
                   <tr class="border-t border-subtle/50 hover:bg-elevated/30 transition-fast">
                     <td class="px-4 py-3 text-primary font-mono text-sm">{fw.filename}</td>
@@ -238,6 +247,9 @@ const Firmwares: Component = () => {
               </For>
             </tbody>
           </table></div>
+          <div class="px-4 py-3">
+            <Pagination page={fwPage()} totalPages={fwTotalPages()} totalItems={filteredFirmwares().length} pageSize={FW_PAGE_SIZE} onPageChange={setFwPage} />
+          </div>
         </Show>
       </div>
 

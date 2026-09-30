@@ -8,6 +8,7 @@ import ColorSwatch from '../components/ColorSwatch';
 import { useFeedback } from '../components/Feedback';
 import { useAuth } from '../lib/auth';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> = {
@@ -36,6 +37,8 @@ const MetricsSettings: Component = () => {
   const [showMetricModal, setShowMetricModal] = createSignal(false);
   const [metricForm, setMetricForm] = createSignal<Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>>(EMPTY_METRIC);
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [metricPage, setMetricPage] = createSignal(0);
+  const METRIC_PAGE_SIZE = 15;
 
   const getFilterValue = (def: MetricDefinition, colId: string): string => {
     switch (colId) {
@@ -54,6 +57,12 @@ const MetricsSettings: Component = () => {
     const all = metrics() || [];
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
+  const pagedMetrics = createMemo(() => {
+    const all = filteredMetrics();
+    const start = metricPage() * METRIC_PAGE_SIZE;
+    return all.slice(start, start + METRIC_PAGE_SIZE);
+  });
+  const metricTotalPages = createMemo(() => Math.ceil(filteredMetrics().length / METRIC_PAGE_SIZE));
 
   const openCreateMetric = () => {
     setEditingMetric(null);
@@ -142,7 +151,7 @@ const MetricsSettings: Component = () => {
           <p class="text-sm text-muted">No metric definitions. Add a metric to start collecting time-series data from CPEs.</p>
         </Show>
         <Show when={!metrics.loading && (metrics() || []).length > 0}>
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto table-scroll">
             <table class="data-table w-full text-sm">
               <thead class="sticky top-0 bg-base z-10">
                 <tr class="border-b-2 border-subtle bg-base">
@@ -187,7 +196,7 @@ const MetricsSettings: Component = () => {
                 </tr>
               </thead>
               <tbody>
-                <For each={filteredMetrics()}>
+                <For each={pagedMetrics()}>
                   {(def) => (
                     <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
                       <td class="px-3 py-2.5 text-primary font-medium">
@@ -228,6 +237,9 @@ const MetricsSettings: Component = () => {
                 </For>
               </tbody>
             </table>
+          </div>
+          <div class="mt-3">
+            <Pagination page={metricPage()} totalPages={metricTotalPages()} totalItems={filteredMetrics().length} pageSize={METRIC_PAGE_SIZE} onPageChange={setMetricPage} />
           </div>
         </Show>
       </div>

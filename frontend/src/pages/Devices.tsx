@@ -423,7 +423,7 @@ const Devices: Component = () => {
       </Show>
 
       <Show when={!deviceList.error}><div class="card overflow-hidden">
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto table-scroll">
           <table class="data-table w-full">
             <thead>
               <tr class="border-b border-subtle">

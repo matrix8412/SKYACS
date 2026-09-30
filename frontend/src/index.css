@@ -158,6 +158,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .ops-register-cell.is-text dd { font-family: "IBM Plex Sans", "Segoe UI", Arial, sans-serif; font-size: 15px; line-height: 1.2; }
 
 .data-panel { background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-default)); }
+.table-scroll { max-height: calc(100vh - 280px); overflow-y: auto; }
 .data-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-height: 58px; padding: 13px 16px; border-bottom: 1px solid rgb(var(--border-subtle)); }
 .data-panel-header h2, .data-panel-header h3 { margin: 0; font-size: 13px; font-weight: 600; }
 .data-panel-header p { margin: 3px 0 0; color: rgb(var(--text-muted)); font-size: 10px; }

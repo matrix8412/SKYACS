@@ -9,6 +9,7 @@ import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import MetricChart from '../components/MetricChart';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 const DeviceDetail: Component = () => {
@@ -24,6 +25,14 @@ const DeviceDetail: Component = () => {
   const [parameters, { refetch: refetchParams }] = createResource(serial, api.getDeviceParameters);
   const [tasks, { refetch: refetchTasks }] = createResource(serial, api.getDeviceTasks);
   const [metricDefs] = createResource(api.getMetricDefinitions);
+  const [taskPage, setTaskPage] = createSignal(0);
+  const TASK_PAGE_SIZE = 10;
+  const pagedTasks = createMemo(() => {
+    const all = tasks() || [];
+    const start = taskPage() * TASK_PAGE_SIZE;
+    return all.slice(start, start + TASK_PAGE_SIZE);
+  });
+  const taskTotalPages = createMemo(() => Math.ceil((tasks()?.length || 0) / TASK_PAGE_SIZE));
 
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [message, setMessage] = createSignal<{ type: 'success' | 'error'; text: string; detail?: string } | null>(null);
@@ -1527,7 +1536,7 @@ const DeviceDetail: Component = () => {
               </div>
               <Show when={!tasks.loading} fallback={<div class="p-5 space-y-2" aria-label="Loading CPE task history"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-full" /></div>}>
               <Show when={(tasks()?.length || 0) > 0} fallback={<EmptyState compact title="No remote tasks have been queued" description="Reboot, parameter, firmware, and connection-request operations will appear here after an operator creates them." />}>
-                <div class="max-h-48 overflow-y-auto">
+                <div class="table-scroll">
                   <table class="data-table w-full text-sm min-w-[680px]">
                     <thead class="bg-base sticky top-0 z-10">
                       <tr class="bg-base">
@@ -1538,7 +1547,7 @@ const DeviceDetail: Component = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      <For each={tasks()}>
+                      <For each={pagedTasks()}>
                         {(task) => (
                           <tr class="border-t border-subtle/50 hover:bg-elevated/30">
                             <td class="px-4 py-2 text-primary">{task.type}</td>
@@ -1550,6 +1559,9 @@ const DeviceDetail: Component = () => {
                       </For>
                     </tbody>
                   </table>
+                </div>
+                <div class="px-4 py-3">
+                  <Pagination page={taskPage()} totalPages={taskTotalPages()} totalItems={tasks()?.length || 0} pageSize={TASK_PAGE_SIZE} onPageChange={setTaskPage} />
                 </div>
               </Show>
               </Show>

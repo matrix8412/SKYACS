@@ -7,6 +7,7 @@ import Dialog from '../components/Dialog';
 import PageHeader from '../components/PageHeader';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 
 interface ProvColumnConfig {
@@ -70,6 +71,14 @@ const Provisioning: Component = () => {
     const all = provRules() ?? [];
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
+  const [provPage, setProvPage] = createSignal(0);
+  const PROV_PAGE_SIZE = 15;
+  const pagedProvRules = createMemo(() => {
+    const all = filteredProvRules();
+    const start = provPage() * PROV_PAGE_SIZE;
+    return all.slice(start, start + PROV_PAGE_SIZE);
+  });
+  const provTotalPages = createMemo(() => Math.ceil(filteredProvRules().length / PROV_PAGE_SIZE));
 
   onMount(() => {
     loadProvRules();
@@ -310,7 +319,7 @@ const Provisioning: Component = () => {
           </Show>
 
           <Show when={!provError() && provRules() !== null}>
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto table-scroll">
               <table class="w-full text-left">
                 <thead>
                   <tr class="border-b border-subtle">
@@ -328,7 +337,7 @@ const Provisioning: Component = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  <For each={filteredProvRules()}>
+                  <For each={pagedProvRules()}>
                     {(p, idx) => (
                       <tr
                         class={`border-b border-subtle/50 hover:bg-elevated/40 transition-colors ${provDraggedRow() === p.id ? 'opacity-50' : ''}`}
@@ -398,6 +407,9 @@ const Provisioning: Component = () => {
                   </For>
                 </tbody>
               </table>
+            </div>
+            <div class="px-4 py-3">
+              <Pagination page={provPage()} totalPages={provTotalPages()} totalItems={filteredProvRules().length} pageSize={PROV_PAGE_SIZE} onPageChange={setProvPage} />
             </div>
           </Show>
 
