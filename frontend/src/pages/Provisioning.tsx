@@ -18,7 +18,7 @@ interface ProvColumnConfig {
 }
 
 const defaultProvColumns: ProvColumnConfig[] = [
-  { id: 'parameter', label: 'Parameter', visible: true, order: 0 },
+  { id: 'parameter', label: 'CWMP path', visible: true, order: 0 },
   { id: 'value', label: 'Value', visible: true, order: 1 },
   { id: 'manufacturer', label: 'Manufacturer', visible: true, order: 2 },
   { id: 'product_class', label: 'Product Class', visible: true, order: 3 },
@@ -40,6 +40,11 @@ const Provisioning: Component = () => {
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
   const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '', add_object_path: '', order: 0 };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
+  const [isAddObjectRule, setIsAddObjectRule] = createSignal(false);
+
+  const provisioningPayload = (form: typeof emptyProvisioningRule) => isAddObjectRule()
+    ? { ...form, parameter_name: '', parameter_value: '', parameter_type: 'string', add_object_path: form.parameter_name.trim() }
+    : { ...form, add_object_path: '' };
 
   // Provisioning column visibility
   const [provColumns, setProvColumns] = createSignal<ProvColumnConfig[]>((() => {
@@ -56,8 +61,8 @@ const Provisioning: Component = () => {
 
   const getFilterValue = (rule: ProvisioningRule, colId: string): string => {
     switch (colId) {
-      case 'parameter': return rule.parameter_name || '';
-      case 'value': return rule.parameter_value || '';
+      case 'parameter': return rule.add_object_path || rule.parameter_name || '';
+      case 'value': return rule.add_object_path ? '' : rule.parameter_value || '';
       case 'manufacturer': return rule.manufacturer || '';
       case 'product_class': return rule.product_class || '';
       case 'tag': return rule.tag || '';
@@ -180,14 +185,16 @@ const Provisioning: Component = () => {
   const handleCreateProv = async () => {
     if (pendingAction()) return;
     const form = provForm();
-    if (!form.parameter_name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'CWMP parameter name is required.' }); return; }
-    if (!form.add_object_path.trim() && !form.parameter_value.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Parameter value is required for rules without AddObject path.' }); return; }
+    if (!form.parameter_name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'CWMP path is required.' }); return; }
+    if (!isAddObjectRule() && !form.parameter_value.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Parameter value is required for parameter rules.' }); return; }
     setPendingAction('create-provisioning');
     try {
-      await api.createProvisioningRule(form);
-      notify({ tone: 'success', title: 'Provisioning rule created', message: provForm().parameter_name });
+      const payload = provisioningPayload(form);
+      await api.createProvisioningRule(payload);
+      notify({ tone: 'success', title: 'Provisioning rule created', message: payload.add_object_path || payload.parameter_name });
       setShowProvModal(false);
       setProvForm({ ...emptyProvisioningRule });
+      setIsAddObjectRule(false);
       refetchProvRules();
     } catch (error) { notify({ tone: 'error', title: 'Could not create provisioning rule', message: 'No rule was added. The entered values are preserved.', detail: (error as Error).message, persistent: true }); }
     finally { setPendingAction(null); }
@@ -197,12 +204,13 @@ const Provisioning: Component = () => {
     const p = editingProv();
     if (!p || pendingAction()) return;
     const form = provForm();
-    if (!form.parameter_name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'CWMP parameter name is required.' }); return; }
-    if (!form.add_object_path.trim() && !form.parameter_value.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Parameter value is required for rules without AddObject path.' }); return; }
+    if (!form.parameter_name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'CWMP path is required.' }); return; }
+    if (!isAddObjectRule() && !form.parameter_value.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Parameter value is required for parameter rules.' }); return; }
     setPendingAction('update-provisioning');
     try {
-      await api.updateProvisioningRule(p.id, form);
-      notify({ tone: 'success', title: 'Provisioning rule updated', message: provForm().parameter_name });
+      const payload = provisioningPayload(form);
+      await api.updateProvisioningRule(p.id, payload);
+      notify({ tone: 'success', title: 'Provisioning rule updated', message: payload.add_object_path || payload.parameter_name });
       setShowProvModal(false);
       setEditingProv(null);
       refetchProvRules();
@@ -229,12 +237,14 @@ const Provisioning: Component = () => {
 
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
-    setProvForm({ parameter_name: p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order });
+    setIsAddObjectRule(Boolean(p.add_object_path));
+    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order });
     setShowProvModal(true);
   };
 
   const openCreateProv = () => {
     setEditingProv(null);
+    setIsAddObjectRule(false);
     setProvForm({ ...emptyProvisioningRule });
     setShowProvModal(true);
   };
@@ -327,7 +337,7 @@ const Provisioning: Component = () => {
                     <For each={visibleProvColumns()}>
                       {(col) => (
                         <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">
-                          <div class="flex items-center gap-1.5">{col.label}
+                          <div class="flex items-center gap-1.5">{col.id === 'parameter' ? 'CWMP path' : col.label}
                             <ColumnFilter columnId={col.id} label={col.label} active={columnFilters()[col.id] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n[col.id] = s; else delete n[col.id]; return n; }); }} />
                           </div>
                         </th>
@@ -354,7 +364,7 @@ const Provisioning: Component = () => {
                         </td>
                         <Show when={visibleProvColumns().some(c => c.id === 'parameter')}>
                           <td class="py-2 pr-4">
-                            <span class="text-secondary text-xs font-mono">{p.parameter_name}</span>
+                            <span class="text-secondary text-xs font-mono">{p.add_object_path || p.parameter_name}</span>
                             <Show when={p.add_object_path}>
                               <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 ml-1.5">AddObject</span>
                             </Show>
@@ -364,7 +374,7 @@ const Provisioning: Component = () => {
                           </td>
                         </Show>
                         <Show when={visibleProvColumns().some(c => c.id === 'value')}>
-                          <td class="py-2 text-secondary text-xs font-mono max-w-xs truncate">{p.parameter_value}</td>
+                          <td class="py-2 text-secondary text-xs font-mono max-w-xs truncate">{p.add_object_path ? '—' : p.parameter_value}</td>
                         </Show>
                         <Show when={visibleProvColumns().some(c => c.id === 'manufacturer')}>
                           <td class="py-2 text-secondary text-xs">{p.manufacturer || '—'}</td>
@@ -427,18 +437,24 @@ const Provisioning: Component = () => {
         >
           <form onSubmit={(e) => { e.preventDefault(); editingProv() ? handleUpdateProv() : handleCreateProv(); }} class="space-y-4">
             <div>
-              <label for="provisioning-parameter" class="block text-xs text-muted mb-1.5">CWMP parameter name</label>
-              <input id="provisioning-parameter" type="text" value={provForm().parameter_name} onInput={(e) => setProvForm(f => ({ ...f, parameter_name: e.currentTarget.value }))} class="input w-full" placeholder="InternetGatewayDevice.WANDevice.1.WANConnectionHandling.1.ConnectionType" />
+              <label for="provisioning-parameter" class="block text-xs text-muted mb-1.5">{isAddObjectRule() ? 'CWMP object path' : 'CWMP parameter name'}</label>
+              <input id="provisioning-parameter" type="text" value={provForm().parameter_name} onInput={(e) => setProvForm(f => ({ ...f, parameter_name: e.currentTarget.value }))} class="input w-full" placeholder={isAddObjectRule() ? 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection' : 'Path to a writable CWMP parameter'} />
             </div>
             <div>
-              <label for="provisioning-value" class="block text-xs text-muted mb-1.5">Parameter value</label>
-              <input id="provisioning-value" type="text" value={provForm().parameter_value} onInput={(e) => setProvForm(f => ({ ...f, parameter_value: e.currentTarget.value }))} class="input w-full" placeholder="bridge" />
+              <label for="provisioning-add-object" class="flex items-center gap-2 text-sm text-secondary">
+                <input id="provisioning-add-object" type="checkbox" checked={isAddObjectRule()} onChange={(e) => setIsAddObjectRule(e.currentTarget.checked)} class="rounded" />
+                AddObject: create a new object instance
+              </label>
+              <Show when={isAddObjectRule()}>
+                <p class="text-xs text-muted mt-1">The path above identifies the object collection. No parameter value is sent. Use <code class="text-amber-400">{'{prev}'}</code> in a later rule to reference the new instance.</p>
+              </Show>
             </div>
-            <div>
-              <label for="provisioning-add-object" class="block text-xs text-muted mb-1.5">Add Object path (optional)</label>
-              <input id="provisioning-add-object" type="text" value={provForm().add_object_path} onInput={(e) => setProvForm(f => ({ ...f, add_object_path: e.currentTarget.value }))} class="input w-full" placeholder="InternetGatewayDevice.WANDevice.1.WANConnectionDevice" />
-              <p class="text-xs text-muted mt-1">Creates a new object via CWMP AddObject before setting parameters. Use <code class="text-amber-400">{'{prev}'}</code> to reference the instance number from the previous AddObject. Leave empty for regular parameter rules.</p>
-            </div>
+            <Show when={!isAddObjectRule()}>
+              <div>
+                <label for="provisioning-value" class="block text-xs text-muted mb-1.5">Parameter value</label>
+                <input id="provisioning-value" type="text" value={provForm().parameter_value} onInput={(e) => setProvForm(f => ({ ...f, parameter_value: e.currentTarget.value }))} class="input w-full" placeholder="Enter the parameter value" />
+              </div>
+            </Show>
             <div>
               <label for="provisioning-order" class="block text-xs text-muted mb-1.5">Order</label>
               <input id="provisioning-order" type="number" min="0" value={provForm().order} onInput={(e) => setProvForm(f => ({ ...f, order: Number(e.currentTarget.value) || 0 }))} class="input w-full" />
@@ -457,16 +473,18 @@ const Provisioning: Component = () => {
               <input id="provisioning-tag" type="text" value={provForm().tag} onInput={(e) => setProvForm(f => ({ ...f, tag: e.currentTarget.value }))} class="input w-full" placeholder="branch-a (leave empty to apply to all CPEs)" />
               <p class="text-xs text-muted mt-1">Applies the rule only to CPEs that carry this tag. Leave empty to apply to all matching CPEs.</p>
             </div>
-            <div>
-              <label for="provisioning-type" class="block text-xs text-muted mb-1.5">CWMP value type</label>
-              <select id="provisioning-type" value={provForm().parameter_type} onChange={(e) => setProvForm(f => ({ ...f, parameter_type: e.currentTarget.value }))} class="input w-full">
-                <option value="string">string</option>
-                <option value="boolean">boolean</option>
-                <option value="int">int</option>
-                <option value="unsignedInt">unsignedInt</option>
-                <option value="dateTime">dateTime</option>
-              </select>
-            </div>
+            <Show when={!isAddObjectRule()}>
+              <div>
+                <label for="provisioning-type" class="block text-xs text-muted mb-1.5">CWMP value type</label>
+                <select id="provisioning-type" value={provForm().parameter_type} onChange={(e) => setProvForm(f => ({ ...f, parameter_type: e.currentTarget.value }))} class="input w-full">
+                  <option value="string">string</option>
+                  <option value="boolean">boolean</option>
+                  <option value="int">int</option>
+                  <option value="unsignedInt">unsignedInt</option>
+                  <option value="dateTime">dateTime</option>
+                </select>
+              </div>
+            </Show>
             <div>
               <label for="provisioning-phase" class="block text-xs text-muted mb-1.5">Trigger phase</label>
               <select id="provisioning-phase" value={provForm().phase} onChange={(e) => setProvForm(f => ({ ...f, phase: e.currentTarget.value }))} class="input w-full">

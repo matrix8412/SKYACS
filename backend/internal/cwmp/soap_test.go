@@ -70,17 +70,20 @@ func TestSetParameterValuesIncludesSOAPTypesAndArrayMetadata(t *testing.T) {
 
 func TestAddObjectSerializesCorrectly(t *testing.T) {
 	request := &AddObject{
-		ParameterName: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice",
-		ObjectName:    "WANConnectionDevice",
+		ObjectName:   "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.",
+		ParameterKey: "auto-provisioning",
 	}
 	encoded, err := GenerateSOAPEnvelopeWithContext(request, CWMPNamespace10, "addobj-1")
 	if err != nil {
 		t.Fatalf("GenerateSOAPEnvelopeWithContext: %v", err)
 	}
-	for _, expected := range []string{"AddObject", "InternetGatewayDevice.WANDevice.1.WANConnectionDevice", "WANConnectionDevice", "addobj-1"} {
+	for _, expected := range []string{"AddObject", "<ObjectName>InternetGatewayDevice.WANDevice.1.WANConnectionDevice.</ObjectName>", "<ParameterKey>auto-provisioning</ParameterKey>", "addobj-1"} {
 		if !bytes.Contains(encoded, []byte(expected)) {
 			t.Fatalf("missing %q in SOAP: %s", expected, encoded)
 		}
+	}
+	if bytes.Contains(encoded, []byte("<ParameterName>")) {
+		t.Fatalf("AddObject contains unsupported ParameterName: %s", encoded)
 	}
 	var document interface{}
 	if err := xml.Unmarshal(encoded, &document); err != nil {
@@ -92,7 +95,7 @@ func TestParseAddObjectResponse(t *testing.T) {
 	payload := `<?xml version="1.0"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
   <soap:Header><cwmp:ID soap:mustUnderstand="1">req-1</cwmp:ID></soap:Header>
-  <soap:Body><cwmp:AddObjectResponse><InstanceNumber>2</InstanceNumber><FaultCode>0</FaultCode><FaultString></FaultString></cwmp:AddObjectResponse></soap:Body>
+  <soap:Body><cwmp:AddObjectResponse><InstanceNumber>2</InstanceNumber><Status>0</Status></cwmp:AddObjectResponse></soap:Body>
 </soap:Envelope>`
 	envelope, err := ParseSOAPEnvelope(strings.NewReader(payload))
 	if err != nil {
@@ -107,24 +110,27 @@ func TestParseAddObjectResponse(t *testing.T) {
 	if envelope.Body.AddObjectResponse.InstanceNumber != "2" {
 		t.Fatalf("unexpected InstanceNumber %q", envelope.Body.AddObjectResponse.InstanceNumber)
 	}
-	if envelope.Body.AddObjectResponse.FaultCode != "0" {
-		t.Fatalf("unexpected FaultCode %q", envelope.Body.AddObjectResponse.FaultCode)
+	if envelope.Body.AddObjectResponse.Status != 0 {
+		t.Fatalf("unexpected Status %d", envelope.Body.AddObjectResponse.Status)
 	}
 }
 
-func TestLastPathSegment(t *testing.T) {
-	tests := []struct {
-		path string
-		want string
-	}{
-		{"InternetGatewayDevice.WANDevice.1.WANConnectionDevice", "WANConnectionDevice"},
-		{"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection", "WANIPConnection"},
-		{"Device", "Device"},
-		{"", ""},
+func TestParseAddObjectFault(t *testing.T) {
+	payload := `<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:cwmp="urn:dslforum-org:cwmp-1-0">
+  <soap:Body><soap:Fault><faultcode>Client</faultcode><faultstring>CWMP fault</faultstring>
+    <detail><cwmp:Fault><FaultCode>9005</FaultCode><FaultString>Invalid parameter name</FaultString></cwmp:Fault></detail>
+  </soap:Fault></soap:Body>
+</soap:Envelope>`
+	envelope, err := ParseSOAPEnvelope(strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("ParseSOAPEnvelope: %v", err)
 	}
-	for _, tt := range tests {
-		if got := lastPathSegment(tt.path); got != tt.want {
-			t.Errorf("lastPathSegment(%q) = %q, want %q", tt.path, got, tt.want)
-		}
+	if got := DetectMessageType(&envelope.Body); got != "Fault" {
+		t.Fatalf("unexpected message type %q", got)
+	}
+	fault := envelope.Body.Fault
+	if fault == nil || fault.Detail.CWMPFault == nil || fault.Detail.CWMPFault.FaultCode != "9005" {
+		t.Fatalf("CWMP fault not parsed: %+v", fault)
 	}
 }

@@ -2030,10 +2030,10 @@ func (r *Router) handleListProvisioningRules(w http.ResponseWriter, req *http.Re
 	respondJSON(w, http.StatusOK, rules)
 }
 
-// validatePrevReferenceInList checks that a rule using {prev} in its parameter_value
-// has at least one AddObject rule preceding it in the (order, id) execution order.
-func validatePrevReferenceInList(rules []*models.ProvisioningRule, ruleID int64, order int, parameterValue string) error {
-	if !strings.Contains(parameterValue, "{prev}") {
+// validatePrevReferenceInList checks that a rule using {prev} has an AddObject
+// rule preceding it in the (order, id) execution order.
+func validatePrevReferenceInList(rules []*models.ProvisioningRule, ruleID int64, order int, parameterName, parameterValue, addObjectPath string) error {
+	if !strings.Contains(parameterName, "{prev}") && !strings.Contains(parameterValue, "{prev}") && !strings.Contains(addObjectPath, "{prev}") {
 		return nil
 	}
 	for _, rule := range rules {
@@ -2053,12 +2053,12 @@ func validatePrevReferenceInList(rules []*models.ProvisioningRule, ruleID int64,
 }
 
 // validatePrevReference loads all rules and delegates to validatePrevReferenceInList.
-func (r *Router) validatePrevReference(ctx context.Context, ruleID int64, order int, parameterValue string) error {
+func (r *Router) validatePrevReference(ctx context.Context, ruleID int64, order int, parameterName, parameterValue, addObjectPath string) error {
 	rules, err := r.provisioningRepo.List(ctx)
 	if err != nil {
 		return fmt.Errorf("validate {prev} reference: %w", err)
 	}
-	return validatePrevReferenceInList(rules, ruleID, order, parameterValue)
+	return validatePrevReferenceInList(rules, ruleID, order, parameterName, parameterValue, addObjectPath)
 }
 
 func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.Request) {
@@ -2076,7 +2076,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2084,7 +2084,12 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := r.validatePrevReference(req.Context(), 0, body.Order, body.ParameterValue); err != nil {
+	if strings.TrimSpace(body.AddObjectPath) != "" {
+		body.ParameterName = ""
+		body.ParameterValue = ""
+		body.ParameterType = "string"
+	}
+	if err := r.validatePrevReference(req.Context(), 0, body.Order, body.ParameterName, body.ParameterValue, body.AddObjectPath); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2139,7 +2144,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2147,7 +2152,12 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := r.validatePrevReference(req.Context(), id, body.Order, body.ParameterValue); err != nil {
+	if strings.TrimSpace(body.AddObjectPath) != "" {
+		body.ParameterName = ""
+		body.ParameterValue = ""
+		body.ParameterType = "string"
+	}
+	if err := r.validatePrevReference(req.Context(), id, body.Order, body.ParameterName, body.ParameterValue, body.AddObjectPath); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2162,17 +2172,19 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 	respondJSON(w, http.StatusOK, body)
 }
 
-func validateProvisioningRule(name, value, valueType, phase, manufacturer, productClass, tag, description string) error {
-	if err := validateParameterNames([]string{name}); err != nil {
-		return err
-	}
-	if len(value) > 4096 {
-		return errors.New("provisioning value exceeds 4096 bytes")
-	}
-	switch valueType {
-	case "", "string", "boolean", "int", "unsignedInt", "long", "unsignedLong", "dateTime", "base64", "hexBinary":
-	default:
-		return errors.New("unsupported CWMP parameter type")
+func validateProvisioningRule(name, value, valueType, addObjectPath, phase, manufacturer, productClass, tag, description string) error {
+	if strings.TrimSpace(addObjectPath) == "" {
+		if err := validateParameterNames([]string{name}); err != nil {
+			return err
+		}
+		if len(value) > 4096 {
+			return errors.New("provisioning value exceeds 4096 bytes")
+		}
+		switch valueType {
+		case "", "string", "boolean", "int", "unsignedInt", "long", "unsignedLong", "dateTime", "base64", "hexBinary":
+		default:
+			return errors.New("unsupported CWMP parameter type")
+		}
 	}
 	switch phase {
 	case "", "bootstrap", "default":

@@ -1,6 +1,7 @@
 package cwmp
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -129,63 +130,67 @@ func TestPeriodicInformOnExistingSessionDoesNotReTriggerAutoFetch(t *testing.T) 
 	}
 }
 
-// TestAddObjectParentPathDerivation verifies that the parent path is correctly
-// derived from the full AddObjectPath for the AddObject SOAP call.
-// TR-069 requires ParameterName to be the parent object path (without the
-// last segment), and ObjectName to be the last segment.
-func TestAddObjectParentPathDerivation(t *testing.T) {
-	tests := []struct {
-		name         string
-		addObjectPath string
-		wantParent   string
-		wantObject   string
-		wantSkip     bool
-	}{
-		{
-			name:         "multi-segment path",
-			addObjectPath: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection",
-			wantParent:   "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2",
-			wantObject:   "WANIPConnection",
-		},
-		{
-			name:         "two-segment path",
-			addObjectPath: "InternetGatewayDevice.WANDevice",
-			wantParent:   "InternetGatewayDevice",
-			wantObject:   "WANDevice",
-		},
-		{
-			name:         "single-segment path has no parent",
-			addObjectPath: "WANIPConnection",
-			wantParent:   "",
-			wantObject:   "WANIPConnection",
-			wantSkip:     true,
-		},
+func TestAddObjectUsesCollectionPath(t *testing.T) {
+	for _, path := range []string{
+		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice",
+		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.",
+	} {
+		request := addObjectForPath(path)
+		if request.ObjectName != "InternetGatewayDevice.WANDevice.1.WANConnectionDevice." || request.ParameterKey != "auto-provisioning" {
+			t.Fatalf("unexpected AddObject for %q: %+v", path, request)
+		}
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			objName := lastPathSegment(tt.addObjectPath)
-			if objName != tt.wantObject {
-				t.Fatalf("lastPathSegment = %q, want %q", objName, tt.wantObject)
-			}
-			parentPath := strings.TrimSuffix(tt.addObjectPath, "."+objName)
-			if tt.wantSkip {
-				if parentPath != tt.addObjectPath {
-					t.Fatalf("expected parentPath unchanged for single-segment path, got %q", parentPath)
-				}
-				return
-			}
-			if parentPath != tt.wantParent {
-				t.Fatalf("parentPath = %q, want %q", parentPath, tt.wantParent)
-			}
-			// Verify the AddObject struct would be correct
-			addObj := &AddObject{
-				ParameterName: parentPath,
-				ObjectName:    objName,
-			}
-			if addObj.ParameterName == addObj.ObjectName {
-				t.Fatalf("ParameterName and ObjectName are identical (%q) — parent path not derived", addObj.ParameterName)
-			}
-		})
+func TestAddObjectSequenceResolvesPreviousInstance(t *testing.T) {
+	handler := NewHandler(nil)
+	session := handler.sessions.GetOrCreate("add-object-test", "SERIAL")
+	session.State = StateInformReceived
+	session.AddObjectQueue = []*AddObject{
+		addObjectForPath("InternetGatewayDevice.WANDevice.1.WANConnectionDevice"),
+		addObjectForPath("InternetGatewayDevice.WANDevice.1.WANConnectionDevice.{prev}.WANIPConnection"),
+	}
+	session.Provisioning = &SetParameterValues{ParameterList: ParameterList{Parameters: []ParameterValueStruct{{
+		Name: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.{prev}.Name", Value: "wan-{prev}",
+	}}}}
+
+	first, _, err := handler.handleEmptyPost(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := first.(*AddObject).ObjectName; got != "InternetGatewayDevice.WANDevice.1.WANConnectionDevice." {
+		t.Fatalf("first ObjectName = %q", got)
+	}
+	second, err := handler.handleAddObjectResponse(context.Background(), &AddObjectResponse{InstanceNumber: "7"}, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := second.(*AddObject).ObjectName; got != "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.7.WANIPConnection." {
+		t.Fatalf("second ObjectName = %q", got)
+	}
+	provisioning, err := handler.handleAddObjectResponse(context.Background(), &AddObjectResponse{InstanceNumber: "3"}, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parameter := provisioning.(*SetParameterValues).ParameterList.Parameters[0]
+	if parameter.Name != "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.3.Name" || parameter.Value != "wan-3" {
+		t.Fatalf("unresolved provisioning parameter: %+v", parameter)
+	}
+}
+
+func TestAddObjectFaultClearsProvisioning(t *testing.T) {
+	handler := NewHandler(nil)
+	session := handler.sessions.GetOrCreate("add-object-fault-test", "SERIAL")
+	session.State = StateProcessingTasks
+	session.AddObjectQueue = []*AddObject{addObjectForPath("Device.Test.Table")}
+	session.Provisioning = &SetParameterValues{}
+	_, err := handler.handleFault(context.Background(), &SOAPFault{Detail: FaultDetail{CWMPFault: &CWMPFault{
+		FaultCode: "9005", FaultString: "Invalid parameter name",
+	}}}, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(session.AddObjectQueue) != 0 || session.Provisioning != nil {
+		t.Fatal("provisioning continued after AddObject fault")
 	}
 }

@@ -32,7 +32,7 @@ func TestNormalizeTags(t *testing.T) {
 
 func TestValidateProvisioningRuleTag(t *testing.T) {
 	base := func(tag string) error {
-		return validateProvisioningRule("InternetGatewayDevice.ManagementServer.URL", "http://acs.example.com", "string", "bootstrap", "", "", tag, "")
+		return validateProvisioningRule("InternetGatewayDevice.ManagementServer.URL", "http://acs.example.com", "string", "", "bootstrap", "", "", tag, "")
 	}
 
 	if err := base(""); err != nil {
@@ -46,18 +46,30 @@ func TestValidateProvisioningRuleTag(t *testing.T) {
 	}
 }
 
+func TestValidateProvisioningRuleAddObjectDoesNotRequireParameter(t *testing.T) {
+	path := "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection"
+	if err := validateProvisioningRule("", "", "", path, "bootstrap", "", "", "", ""); err != nil {
+		t.Fatalf("AddObject without SetParameterValues fields was rejected: %v", err)
+	}
+	if err := validateProvisioningRule("", "", "string", "", "bootstrap", "", "", "", ""); err == nil {
+		t.Fatal("parameter rule without a name was accepted")
+	}
+}
+
 func TestValidatePrevReferenceInList(t *testing.T) {
 	addObject := &models.ProvisioningRule{ID: 1, AddObjectPath: "InternetGatewayDevice.LANDevice.1.LANHostConfigManagement.1.Hosts.1.Host", Order: 0}
 	plainRule := &models.ProvisioningRule{ID: 2, ParameterValue: "static", Order: 1}
 
 	cases := []struct {
-		name     string
-		rules    []*models.ProvisioningRule
-		ruleID   int64
-		order    int
-		value    string
-		wantErr  bool
-		errSubstr string
+		name          string
+		rules         []*models.ProvisioningRule
+		ruleID        int64
+		order         int
+		parameterName string
+		value         string
+		path          string
+		wantErr       bool
+		errSubstr     string
 	}{
 		{
 			name:    "no {prev} in value passes",
@@ -76,6 +88,26 @@ func TestValidatePrevReferenceInList(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:          "parameter name with preceding AddObject passes",
+			rules:         []*models.ProvisioningRule{addObject},
+			order:         1,
+			parameterName: "InternetGatewayDevice.LANDevice.1.Host.{prev}.Name",
+		},
+		{
+			name:          "parameter name without AddObject fails",
+			rules:         []*models.ProvisioningRule{plainRule},
+			order:         1,
+			parameterName: "InternetGatewayDevice.LANDevice.1.Host.{prev}.Name",
+			wantErr:       true,
+		},
+		{
+			name:    "object path without preceding AddObject fails",
+			rules:   []*models.ProvisioningRule{addObject},
+			ruleID:  1,
+			path:    "InternetGatewayDevice.LANDevice.1.Host.{prev}.Child",
+			wantErr: true,
+		},
+		{
 			name:    "create with same-order AddObject passes (new rule gets higher id)",
 			rules:   []*models.ProvisioningRule{addObject},
 			ruleID:  0,
@@ -84,21 +116,21 @@ func TestValidatePrevReferenceInList(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "create with no AddObject fails",
-			rules:   []*models.ProvisioningRule{plainRule},
-			ruleID:  0,
-			order:   1,
-			value:   "{prev}.1",
-			wantErr: true,
+			name:      "create with no AddObject fails",
+			rules:     []*models.ProvisioningRule{plainRule},
+			ruleID:    0,
+			order:     1,
+			value:     "{prev}.1",
+			wantErr:   true,
 			errSubstr: "no AddObject rule exists before it",
 		},
 		{
-			name:    "create with AddObject after fails",
-			rules:   []*models.ProvisioningRule{{ID: 10, AddObjectPath: "path", Order: 5}},
-			ruleID:  0,
-			order:   1,
-			value:   "{prev}.1",
-			wantErr: true,
+			name:      "create with AddObject after fails",
+			rules:     []*models.ProvisioningRule{{ID: 10, AddObjectPath: "path", Order: 5}},
+			ruleID:    0,
+			order:     1,
+			value:     "{prev}.1",
+			wantErr:   true,
 			errSubstr: "no AddObject rule exists before it",
 		},
 		{
@@ -110,37 +142,37 @@ func TestValidatePrevReferenceInList(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "update with AddObject after fails",
-			rules:   []*models.ProvisioningRule{{ID: 2, ParameterValue: "{prev}.1", Order: 0}, {ID: 10, AddObjectPath: "path", Order: 1}},
-			ruleID:  2,
-			order:   0,
-			value:   "{prev}.1",
-			wantErr: true,
+			name:      "update with AddObject after fails",
+			rules:     []*models.ProvisioningRule{{ID: 2, ParameterValue: "{prev}.1", Order: 0}, {ID: 10, AddObjectPath: "path", Order: 1}},
+			ruleID:    2,
+			order:     0,
+			value:     "{prev}.1",
+			wantErr:   true,
 			errSubstr: "no AddObject rule exists before it",
 		},
 		{
-			name:    "update excludes self even if self has AddObjectPath",
-			rules:   []*models.ProvisioningRule{{ID: 5, AddObjectPath: "path", ParameterValue: "{prev}.1", Order: 0}},
-			ruleID:  5,
-			order:   0,
-			value:   "{prev}.1",
-			wantErr: true,
+			name:      "update excludes self even if self has AddObjectPath",
+			rules:     []*models.ProvisioningRule{{ID: 5, AddObjectPath: "path", ParameterValue: "{prev}.1", Order: 0}},
+			ruleID:    5,
+			order:     0,
+			value:     "{prev}.1",
+			wantErr:   true,
 			errSubstr: "no AddObject rule exists before it",
 		},
 		{
-			name:    "empty rules list with {prev} fails",
-			rules:   []*models.ProvisioningRule{},
-			ruleID:  0,
-			order:   0,
-			value:   "{prev}.1",
-			wantErr: true,
+			name:      "empty rules list with {prev} fails",
+			rules:     []*models.ProvisioningRule{},
+			ruleID:    0,
+			order:     0,
+			value:     "{prev}.1",
+			wantErr:   true,
 			errSubstr: "no AddObject rule exists before it",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validatePrevReferenceInList(tc.rules, tc.ruleID, tc.order, tc.value)
+			err := validatePrevReferenceInList(tc.rules, tc.ruleID, tc.order, tc.parameterName, tc.value, tc.path)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("expected error, got nil")

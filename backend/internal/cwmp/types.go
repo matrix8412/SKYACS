@@ -119,16 +119,14 @@ type ParameterInfoStruct struct {
 
 // AddObject - ACS request to create a new object in the CPE object tree
 type AddObject struct {
-	ParameterName string `xml:"ParameterName"`
-	ObjectName    string `xml:"ObjectName"`
-	Alias         string `xml:"Alias,omitempty"`
+	ObjectName   string `xml:"ObjectName"`
+	ParameterKey string `xml:"ParameterKey"`
 }
 
 // AddObjectResponse - CPE response to AddObject
 type AddObjectResponse struct {
 	InstanceNumber string `xml:"InstanceNumber"`
-	FaultCode      string `xml:"FaultCode"`
-	FaultString    string `xml:"FaultString"`
+	Status         int    `xml:"Status"`
 }
 
 // SOAP Fault untuk error handling
