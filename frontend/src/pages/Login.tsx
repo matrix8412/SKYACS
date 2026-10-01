@@ -47,7 +47,7 @@ const Login: Component = () => {
             CWMP operations, without the middleware.
           </h1>
           <p class="mt-5 text-base text-secondary max-w-xl leading-relaxed">
-            Device inventory, provisioning, firmware delivery, fault response, and vendor-neutral telemetry—without a GenieACS dependency.
+            Device inventory, provisioning, firmware delivery, fault response, and vendor-neutral telemetry.
           </p>
 
           <dl class="login-context">
