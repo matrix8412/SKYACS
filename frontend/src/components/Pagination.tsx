@@ -19,7 +19,7 @@ const Pagination: Component<PaginationProps> = (props) => {
   const end = () => Math.min((props.page + 1) * props.pageSize, props.totalItems);
 
   return (
-    <Show when={props.totalPages > 1}>
+    <Show when={props.totalItems > 0}>
       <div class="flex items-center justify-between text-sm">
         <p class="text-muted">
           Showing {start()} - {end()} of {props.totalItems}
@@ -37,22 +37,24 @@ const Pagination: Component<PaginationProps> = (props) => {
               </For>
             </select>
           </Show>
-          <button
-            onClick={() => props.onPageChange(Math.max(0, props.page - 1))}
-            disabled={props.page === 0}
-            class="btn btn-secondary py-1.5 px-3"
-          >
-            <ChevronLeft size={14} />
-            Previous
-          </button>
-          <button
-            onClick={() => props.onPageChange(Math.min(props.totalPages - 1, props.page + 1))}
-            disabled={props.page >= props.totalPages - 1}
-            class="btn btn-secondary py-1.5 px-3"
-          >
-            Next
-            <ChevronRight size={14} />
-          </button>
+          <Show when={props.totalPages > 1}>
+            <button
+              onClick={() => props.onPageChange(Math.max(0, props.page - 1))}
+              disabled={props.page === 0}
+              class="btn btn-secondary py-1.5 px-3"
+            >
+              <ChevronLeft size={14} />
+              Previous
+            </button>
+            <button
+              onClick={() => props.onPageChange(Math.min(props.totalPages - 1, props.page + 1))}
+              disabled={props.page >= props.totalPages - 1}
+              class="btn btn-secondary py-1.5 px-3"
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </Show>
         </div>
       </div>
     </Show>
