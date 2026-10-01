@@ -39,7 +39,7 @@ const Provisioning: Component = () => {
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
-  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '', add_object_path: '', order: 0 };
+  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '', add_object_path: '', order: 0, condition: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
   const [isAddObjectRule, setIsAddObjectRule] = createSignal(false);
 
@@ -240,7 +240,7 @@ const Provisioning: Component = () => {
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
     setIsAddObjectRule(Boolean(p.add_object_path));
-    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order });
+    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
     setShowProvModal(true);
   };
 
@@ -370,6 +370,9 @@ const Provisioning: Component = () => {
                             <Show when={p.add_object_path}>
                               <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 ml-1.5">AddObject</span>
                             </Show>
+                            <Show when={p.condition}>
+                              <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 ml-1.5">Conditional</span>
+                            </Show>
                             <Show when={p.description}>
                               <p class="text-muted text-xs">{p.description}</p>
                             </Show>
@@ -498,6 +501,11 @@ const Provisioning: Component = () => {
             <div>
               <label for="provisioning-description" class="block text-xs text-muted mb-1.5">Operational description (optional)</label>
               <input id="provisioning-description" type="text" value={provForm().description} onInput={(e) => setProvForm(f => ({ ...f, description: e.currentTarget.value }))} class="input w-full" placeholder="Migrate the ACS URL" />
+            </div>
+            <div>
+              <label for="provisioning-condition" class="block text-xs text-muted mb-1.5">Condition (optional)</label>
+              <textarea id="provisioning-condition" rows={2} value={provForm().condition} onInput={(e) => setProvForm(f => ({ ...f, condition: e.currentTarget.value }))} class="input w-full font-mono text-xs" placeholder="InternetGatewayDevice.DeviceInfo.Manufacturer == 'SkyDash' AND Device.Model contains 'AC1000'" />
+              <p class="text-xs text-muted mt-1">Rule applies only when the condition is true. Operators: <code>==</code> <code>!=</code> <code>&gt;</code> <code>&lt;</code> <code>&gt;=</code> <code>&lt;=</code> <code>contains</code> <code>matches</code>. Combine with <code>AND</code>, <code>OR</code>, <code>NOT</code> and parentheses. Leave empty to always apply.</p>
             </div>
             <div class="flex items-center gap-2">
               <input id="provisioning-enabled" type="checkbox" checked={provForm().enabled} onChange={(e) => setProvForm(f => ({ ...f, enabled: e.currentTarget.checked }))} class="rounded" />

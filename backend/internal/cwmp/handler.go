@@ -306,6 +306,12 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	var provisioning *SetParameterValues
 	var provisioningRules []models.ProvisioningApplication
 	var addObjectQueue []*AddObject
+	var sessionPendingConds []*Condition
+	var sessionPendingApps []models.ProvisioningApplication
+	var sessionPendingParams []string
+	var sessionPendingData []*models.ProvisioningRule
+	var sessionCondFetchActive bool
+	var sessionImmediateEval bool
 
 	if deviceID > 0 && h.provisioningRepo != nil {
 		var allRules []*models.ProvisioningRule
@@ -328,7 +334,12 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 			log.Printf("Applying %d provisioning rules to device %s", len(allRules), inform.DeviceId.SerialNumber)
 
 			spv := &SetParameterValues{ParameterKey: "auto-provisioning"}
+			var conditionalRules []*models.ProvisioningRule
 			for _, rule := range allRules {
+				if rule.Condition != "" {
+					conditionalRules = append(conditionalRules, rule)
+					continue
+				}
 				provisioningRules = append(provisioningRules, models.ProvisioningApplication{RuleID: rule.ID, RuleVersion: rule.Version})
 				if rule.AddObjectPath != "" {
 					addObjectQueue = append(addObjectQueue, addObjectForPath(rule.AddObjectPath))
@@ -348,6 +359,48 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 			if len(spv.ParameterList.Parameters) > 0 {
 				provisioning = spv
 			}
+
+			// Parse conditions and collect params needed for GPV fetch
+			if len(conditionalRules) > 0 {
+				log.Printf("Deferring %d conditional rules for device %s", len(conditionalRules), inform.DeviceId.SerialNumber)
+				seen := make(map[string]bool)
+				var condParams []string
+				var pendingConds []*Condition
+				var pendingApps []models.ProvisioningApplication
+				var pendingData []*models.ProvisioningRule
+				for _, rule := range conditionalRules {
+					cond, err := ParseCondition(rule.Condition)
+					if err != nil {
+						log.Printf("Invalid condition on rule %d: %v (skipping)", rule.ID, err)
+						continue
+					}
+					app := models.ProvisioningApplication{RuleID: rule.ID, RuleVersion: rule.Version}
+					pendingApps = append(pendingApps, app)
+					pendingConds = append(pendingConds, cond)
+					pendingData = append(pendingData, rule)
+					for _, p := range ExtractParamNames(cond) {
+						if !seen[p] {
+							seen[p] = true
+							condParams = append(condParams, p)
+						}
+					}
+				}
+				if len(condParams) > 0 {
+					sessionPendingConds = pendingConds
+					sessionPendingApps = pendingApps
+					sessionPendingParams = condParams
+					sessionCondFetchActive = true
+					sessionPendingData = pendingData
+				} else if len(pendingConds) > 0 {
+					// No params needed — evaluate immediately with empty map
+					sessionPendingConds = pendingConds
+					sessionPendingApps = pendingApps
+					sessionCondFetchActive = false
+					sessionPendingData = pendingData
+					// Mark for immediate evaluation after session is created
+					sessionImmediateEval = true
+				}
+			}
 		}
 	}
 
@@ -364,6 +417,15 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	session.AddObjectInstances = nil
 	session.AddObjectQueue = addObjectQueue
 	session.AddObjectPhase = 0
+	// Conditional provisioning
+	session.PendingConditionalConds = sessionPendingConds
+	session.PendingConditionalRules = sessionPendingApps
+	session.PendingConditionalParams = sessionPendingParams
+	session.PendingConditionalData = sessionPendingData
+	session.ConditionalFetchActive = sessionCondFetchActive
+	if sessionImmediateEval {
+		h.evaluateConditionalRules(session, make(map[string]string))
+	}
 	// Full-tree discovery on BOOTSTRAP or on a brand-new session (e.g. after
 	// ACS restart) so WAN/WiFi/health data is always available. PERIODIC
 	// informs on an existing session stay cheap for large fleets.
@@ -417,6 +479,13 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 		session.State = StateProcessingTasks
 		log.Printf("Sending AddObject: %s to %s", nextObj.ObjectName, sessionID)
 		return nextObj, namespace, nil
+	}
+	// Conditional provisioning: fetch params needed for condition evaluation
+	if session.ConditionalFetchActive && len(session.PendingConditionalParams) > 0 {
+		session.ConditionalFetchActive = false
+		session.State = StateProcessingTasks
+		log.Printf("Sending GPV for %d conditional params to %s", len(session.PendingConditionalParams), sessionID)
+		return &GetParameterValues{ParameterNames: session.PendingConditionalParams}, namespace, nil
 	}
 	if session.Provisioning != nil {
 		request = takeProvisioning(session)
@@ -479,6 +548,17 @@ func (h *Handler) handleGetParameterValuesResponse(ctx context.Context, resp *Ge
 			log.Printf("Error extracting metrics from GPV response: %v", err)
 		}
 		session.LastMetricFetch = time.Now()
+	}
+
+	// Conditional provisioning: evaluate conditions against fetched params
+	if len(session.PendingConditionalConds) > 0 {
+		paramMap := make(map[string]string, len(resp.ParameterList.Parameters))
+		for _, p := range resp.ParameterList.Parameters {
+			paramMap[p.Name] = p.Value
+		}
+		h.evaluateConditionalRules(session, paramMap)
+		// After evaluation, the next empty post will send the SPV if any rules were satisfied
+		return h.getNextTask(ctx, session)
 	}
 
 	if session.AutoFetchPhase > 0 {
@@ -627,6 +707,64 @@ func takeProvisioning(session *Session) *SetParameterValues {
 		}
 	}
 	return request
+}
+
+// evaluateConditionalRules evaluates pending conditional rules against the provided
+// parameter map. Satisfied rules are merged into session.Provisioning (or a new SPV
+// is created). The pending state is cleared after evaluation.
+func (h *Handler) evaluateConditionalRules(session *Session, params map[string]string) {
+	if len(session.PendingConditionalConds) == 0 {
+		return
+	}
+
+	var satisfiedApps []models.ProvisioningApplication
+	var spvParams []ParameterValueStruct
+	var addObjectQueue []*AddObject
+
+	for i, cond := range session.PendingConditionalConds {
+		result, err := Evaluate(cond, params)
+		if err != nil {
+			log.Printf("Error evaluating condition for rule %d: %v (skipping)", session.PendingConditionalRules[i].RuleID, err)
+			continue
+		}
+		if !result {
+			log.Printf("Condition not met for rule %d (serial: %s)", session.PendingConditionalRules[i].RuleID, session.SerialNumber)
+			continue
+		}
+		rule := session.PendingConditionalData[i]
+		log.Printf("Condition satisfied for rule %d (serial: %s)", rule.ID, session.SerialNumber)
+		satisfiedApps = append(satisfiedApps, session.PendingConditionalRules[i])
+		if rule.AddObjectPath != "" {
+			addObjectQueue = append(addObjectQueue, addObjectForPath(rule.AddObjectPath))
+		} else {
+			spvParams = append(spvParams, ParameterValueStruct{
+				Name:  rule.ParameterName,
+				Value: rule.ParameterValue,
+				Type:  rule.ParameterType,
+			})
+		}
+	}
+
+	// Merge into existing provisioning or create new
+	if len(spvParams) > 0 || len(addObjectQueue) > 0 {
+		if session.Provisioning == nil {
+			session.Provisioning = &SetParameterValues{ParameterKey: "auto-provisioning"}
+		}
+		session.Provisioning.ParameterList.Parameters = append(session.Provisioning.ParameterList.Parameters, spvParams...)
+		if len(addObjectQueue) > 0 {
+			session.AddObjectQueue = append(session.AddObjectQueue, addObjectQueue...)
+		}
+	}
+
+	// Track satisfied rules for MarkApplied
+	session.ProvisioningRules = append(session.ProvisioningRules, satisfiedApps...)
+
+	// Clear pending state
+	session.PendingConditionalConds = nil
+	session.PendingConditionalRules = nil
+	session.PendingConditionalParams = nil
+	session.PendingConditionalData = nil
+	session.ConditionalFetchActive = false
 }
 
 func (h *Handler) handleRebootResponse(ctx context.Context, remoteAddr string) (interface{}, error) {

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/skydashnet/skyacs/internal/auth"
+	"github.com/skydashnet/skyacs/internal/cwmp"
 	"github.com/skydashnet/skyacs/internal/database"
 	"github.com/skydashnet/skyacs/internal/models"
 	"github.com/skydashnet/skyacs/internal/netutil"
@@ -2131,6 +2132,10 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := cwmp.ValidateCondition(body.Condition); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid condition: "+err.Error())
+		return
+	}
 	if err := validateAddObjectPath(body.AddObjectPath); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -2164,6 +2169,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		Description:    body.Description,
 		AddObjectPath:  strings.TrimSpace(body.AddObjectPath),
 		Order:          body.Order,
+		Condition:      strings.TrimSpace(body.Condition),
 	}
 
 	if err := r.provisioningRepo.Create(req.Context(), rule); err != nil {
@@ -2199,6 +2205,10 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := cwmp.ValidateCondition(body.Condition); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid condition: "+err.Error())
+		return
+	}
 	if err := validateAddObjectPath(body.AddObjectPath); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -2215,6 +2225,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 
 	body.ID = id
 	body.Tag = strings.ToLower(strings.TrimSpace(body.Tag))
+	body.Condition = strings.TrimSpace(body.Condition)
 	if err := r.provisioningRepo.Update(req.Context(), &body); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to update rule")
 		return

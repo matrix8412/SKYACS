@@ -36,6 +36,13 @@ type Session struct {
 	AddObjectPhase     int
 	AddObjectInstances []string
 
+	// Conditional provisioning state
+	PendingConditionalRules  []models.ProvisioningApplication
+	PendingConditionalConds  []*Condition
+	PendingConditionalParams []string
+	ConditionalFetchActive   bool
+	PendingConditionalData   []*models.ProvisioningRule
+
 	// Metric collection state
 	DeviceType        string
 	MetricFetchReady  bool

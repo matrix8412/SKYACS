@@ -16,6 +16,7 @@ type ProvisioningRule struct {
 	Description    string    `json:"description,omitempty"`
 	AddObjectPath  string    `json:"add_object_path,omitempty" gorm:"size:512"`
 	Order          int       `json:"order" gorm:"not null;default:0"`
+	Condition      string    `json:"condition,omitempty" gorm:"size:1024;default:''"`
 	CreatedAt      time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt      time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
@@ -36,6 +37,7 @@ type CreateProvisioningRuleRequest struct {
 	Description    string `json:"description"`
 	AddObjectPath  string `json:"add_object_path"`
 	Order          int    `json:"order"`
+	Condition      string `json:"condition"`
 }
 
 type ProvisioningApplication struct {
