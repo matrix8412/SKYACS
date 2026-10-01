@@ -822,7 +822,7 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 	allowed := map[string]bool{
 		"firmware_base_url": true, "connection_request_username": true,
 		"connection_request_password": true, "use_auto_conn_credentials": true,
-		"default_page_size": true,
+		"default_page_size": true, "chart_show_points": true,
 	}
 	for key, value := range settings {
 		if !allowed[key] {
@@ -858,6 +858,10 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 			respondError(w, http.StatusBadRequest, "default_page_size must be an integer between 5 and 100")
 			return
 		}
+	}
+	if value, ok := settings["chart_show_points"]; ok && value != "true" && value != "false" {
+		respondError(w, http.StatusBadRequest, "chart_show_points must be true or false")
+		return
 	}
 	autoCredentials := settings["use_auto_conn_credentials"] == "true"
 	if _, supplied := settings["use_auto_conn_credentials"]; !supplied {

@@ -78,6 +78,9 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   let rafId: number | null = null;
   let tooltipEl: HTMLDivElement | null = null;
 
+  const [settings] = createResource(() => api.getSettings());
+  const chartShowPoints = createMemo(() => settings()?.['chart_show_points'] !== 'false');
+
   const [data] = createResource(
     () => ({ serial: props.serial, ids: props.metrics.map((m) => m.id), bucket: bucket().value, hours: bucket().hours }),
     async (q) => {
@@ -148,7 +151,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     return props.metrics.map((m) => m.name).join(' / ');
   });
 
-  const renderChart = () => {
+  const renderChart = (showPoints: boolean) => {
     if (!chartEl()) return;
     const s = seriesData();
     if (!s) {
@@ -171,7 +174,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
         stroke: color,
         width: 2,
         fill: hexToRgba(color, 0.06),
-        points: { show: true, size: 4 },
+        points: { show: showPoints, size: 4 },
         scale,
       });
 
@@ -181,7 +184,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
           stroke: hexToRgba(color, 0.3),
           width: 1,
           fill: hexToRgba(color, 0.03),
-          points: { show: true, size: 3 },
+          points: { show: showPoints, size: 3 },
           scale,
         });
         specs.push({
@@ -189,7 +192,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
           stroke: hexToRgba(color, 0.3),
           width: 1,
           fill: hexToRgba(color, 0.03),
-          points: { show: true, size: 3 },
+          points: { show: showPoints, size: 3 },
           scale,
         });
       }
@@ -316,11 +319,12 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   createEffect(() => {
     const el = chartEl();
     const s = seriesData();
+    const showPoints = chartShowPoints();
     if (!el || !s) return;
     if (rafId) cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(() => {
       rafId = null;
-      renderChart();
+      renderChart(showPoints);
     });
   });
 

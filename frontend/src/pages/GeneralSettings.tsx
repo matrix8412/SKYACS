@@ -24,9 +24,10 @@ const GeneralSettings: Component = () => {
       notify({ tone: 'error', title: 'Invalid value', message: 'Default page size must be between 5 and 100.' });
       return;
     }
+    const showPoints = getValue('chart_show_points') !== 'false' ? 'true' : 'false';
     setSaving(true);
     try {
-      await api.updateSettings({ default_page_size: String(pageSize) });
+      await api.updateSettings({ default_page_size: String(pageSize), chart_show_points: showPoints });
       notify({ tone: 'success', title: 'Settings saved', message: 'General settings have been updated.' });
       refetch();
       setFormData({});
@@ -70,6 +71,24 @@ const GeneralSettings: Component = () => {
                 disabled={!isFullAccess()}
               />
               <p class="text-[11px] text-muted mt-1">Applies to device lists, fault tables, provisioning rules, and other paginated views.</p>
+            </div>
+            <div class="flex items-center justify-between pt-4 border-t border-subtle">
+              <div>
+                <span class="block text-xs text-muted">Show data points in charts</span>
+                <p class="text-xs text-muted mt-0.5">Display markers on metric chart lines. Turn off for a line-only view.</p>
+              </div>
+              <button
+                onClick={() => setFormData((prev) => ({ ...prev, chart_show_points: getValue('chart_show_points') !== 'false' ? 'false' : 'true' }))}
+                class={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  getValue('chart_show_points') !== 'false'
+                    ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                    : 'bg-zinc-700 text-secondary border border-zinc-600'
+                }`}
+                disabled={!isFullAccess()}
+                aria-pressed={getValue('chart_show_points') !== 'false'}
+              >
+                {getValue('chart_show_points') !== 'false' ? 'On' : 'Off'}
+              </button>
             </div>
           </div>
 
