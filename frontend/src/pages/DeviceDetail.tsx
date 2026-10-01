@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
-import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup } from 'solid-js';
+import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle } from 'lucide-solid';
+import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Settings2, Check } from 'lucide-solid';
 import { api, type MetricDefinition } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
@@ -13,6 +13,24 @@ import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { getWanProfiles } from '../lib/wanProfiles';
 import { usePageSize } from '../lib/usePageSize';
+
+interface HostColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+}
+
+const HOST_COLUMNS_STORAGE_KEY = 'skyacs_connected_hosts_columns';
+const defaultHostColumns: HostColumnConfig[] = [
+  { id: 'hostname', label: 'Hostname', visible: true },
+  { id: 'ip', label: 'IP address', visible: true },
+  { id: 'ipv6', label: 'IPv6 address', visible: true },
+  { id: 'mac', label: 'MAC address', visible: true },
+  { id: 'negRate', label: 'Neg. rate', visible: true },
+  { id: 'interface', label: 'Interface', visible: true },
+  { id: 'rssi', label: 'Signal', visible: true },
+  { id: 'uptime', label: 'Uptime', visible: true },
+];
 
 const DeviceDetail: Component = () => {
   const params = useParams<{ serial: string }>();
@@ -68,6 +86,32 @@ const DeviceDetail: Component = () => {
   const [tagsLoading, setTagsLoading] = createSignal(false);
   const [paramColumnFilters, setParamColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [hostColumnFilters, setHostColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [showHostColumnSettings, setShowHostColumnSettings] = createSignal(false);
+  const [hostColumns, setHostColumns] = createSignal<HostColumnConfig[]>([]);
+
+  onMount(() => {
+    const saved = localStorage.getItem(HOST_COLUMNS_STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as HostColumnConfig[];
+        setHostColumns(defaultHostColumns.map(column => {
+          const stored = parsed.find(item => item.id === column.id);
+          return stored ? { ...column, visible: stored.visible } : column;
+        }));
+      } catch {
+        setHostColumns([...defaultHostColumns]);
+      }
+    } else {
+      setHostColumns([...defaultHostColumns]);
+    }
+  });
+
+  createEffect(() => {
+    const columns = hostColumns();
+    if (columns.length > 0) {
+      localStorage.setItem(HOST_COLUMNS_STORAGE_KEY, JSON.stringify(columns));
+    }
+  });
 
   const deviceTags = createMemo(() => device()?.tags || []);
 
@@ -604,7 +648,7 @@ const DeviceDetail: Component = () => {
 
   const getHosts = () => {
     const params = parameters() || [];
-    const hosts: Array<{ index: number; hostname: string; ip: string; mac: string; interface: string; rssi?: string; uptime?: string }> = [];
+    const hosts: Array<{ index: number; hostname: string; ip: string; ipv6: string; mac: string; negRate: string; interface: string; rssi?: string; uptime?: string }> = [];
     
     const hostIndices = [...new Set(params.filter(p => p.name.includes('Hosts.Host.')).map(p => {
       const match = p.name.match(/Host\.(\d+)\./);
@@ -666,7 +710,9 @@ const DeviceDetail: Component = () => {
         index: i,
         hostname: getVal('HostName'),
         ip: getVal('IPAddress'),
+        ipv6: getVal('IPv6Address'),
         mac: getVal('MACAddress'),
+        negRate: getVal('X_HW_NegotiatedRate'),
         interface: interfaceType,
       });
     });
@@ -691,7 +737,9 @@ const DeviceDetail: Component = () => {
               index: 100 + ssidIdx * 10 + i,
               hostname: getVal('X_HW_AssociatedDevicedescriptions') || '-',
               ip: getVal('AssociatedDeviceIPAddress'),
+              ipv6: '-',
               mac: mac,
+              negRate: '-',
               interface: `WiFi ${getWifiBand(ssidIdx)}`,
               rssi: getVal('X_HW_RSSI'),
               uptime: getVal('X_HW_Uptime'),
@@ -726,13 +774,19 @@ const DeviceDetail: Component = () => {
       switch (colId) {
         case 'hostname': return h.hostname || '';
         case 'ip': return h.ip || '';
+        case 'ipv6': return h.ipv6 || '';
         case 'mac': return h.mac || '';
+        case 'negRate': return h.negRate || '';
         case 'interface': return h.interface || '';
         case 'rssi': return h.rssi || '';
         case 'uptime': return h.uptime || '';
         default: return '';
       }
     });
+  };
+
+  const toggleHostColumn = (id: string) => {
+    setHostColumns(columns => columns.map(column => column.id === id ? { ...column, visible: !column.visible } : column));
   };
 
   const isSensitiveParameter = (name: string) => /password|passphrase|presharedkey|privatekey|secret/i.test(name);
@@ -1368,58 +1422,99 @@ const DeviceDetail: Component = () => {
             <Show when={activeTab() === 'hosts'}>
             {/* Row 4: Connected Hosts */}
             <div class="card p-5">
-              <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
-                <Users size={14} />
-                Connected Hosts ({getHosts().length})
-              </h2>
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
+                  <Users size={14} />
+                  Connected Hosts ({getHosts().length})
+                </h2>
+                <button
+                  type="button"
+                  class="btn btn-secondary text-xs"
+                  onClick={() => setShowHostColumnSettings(value => !value)}
+                  aria-expanded={showHostColumnSettings()}
+                  aria-controls="connected-hosts-column-settings"
+                >
+                  <Settings2 size={14} />
+                  Columns
+                </button>
+              </div>
+              <Show when={showHostColumnSettings()}>
+                <div id="connected-hosts-column-settings" class="flex flex-wrap gap-2 mb-4" aria-label="Connected Hosts column visibility">
+                  <For each={hostColumns()}>
+                    {(column) => (
+                      <button
+                        type="button"
+                        onClick={() => toggleHostColumn(column.id)}
+                        class={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs ${column.visible ? 'border-sky-500/50 text-sky-400 bg-sky-500/10' : 'border-subtle text-muted'}`}
+                        aria-pressed={column.visible}
+                      >
+                        <Show when={column.visible}><Check size={12} /></Show>
+                        {column.label}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
               <Show when={!parameters.loading || (parameters()?.length ?? 0) > 0} fallback={<div class="space-y-2" aria-label="Loading connected hosts"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-2/3" /></div>}>
                 <Show when={getHosts().length > 0} fallback={
                   <EmptyState compact title="No connected hosts are reported" description="The stored parameter set contains no active LAN or Wi-Fi clients. Send a connection request with Summon to request current host data." />
                 }>
                 <div class="overflow-x-auto">
-                  <table class="data-table w-full text-sm min-w-[720px]">
+                  <table class="data-table w-full text-sm min-w-[960px]">
                     <thead class="sticky top-0 bg-base z-10">
                       <tr class="border-b border-subtle bg-base">
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                        <Show when={hostColumns().find(column => column.id === 'hostname')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">Hostname
                             <ColumnFilter columnId="hostname" label="Hostname" active={hostColumnFilters()['hostname'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['hostname'] = s; else delete n['hostname']; return n; }); }} />
                           </div>
-                        </th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                        </th></Show>
+                        <Show when={hostColumns().find(column => column.id === 'ip')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">IP address
                             <ColumnFilter columnId="ip" label="IP address" active={hostColumnFilters()['ip'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['ip'] = s; else delete n['ip']; return n; }); }} />
                           </div>
-                        </th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                        </th></Show>
+                        <Show when={hostColumns().find(column => column.id === 'ipv6')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">IPv6 address
+                            <ColumnFilter columnId="ipv6" label="IPv6 address" active={hostColumnFilters()['ipv6'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['ipv6'] = s; else delete n['ipv6']; return n; }); }} />
+                          </div>
+                        </th></Show>
+                        <Show when={hostColumns().find(column => column.id === 'mac')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">MAC address
                             <ColumnFilter columnId="mac" label="MAC address" active={hostColumnFilters()['mac'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['mac'] = s; else delete n['mac']; return n; }); }} />
                           </div>
-                        </th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                        </th></Show>
+                        <Show when={hostColumns().find(column => column.id === 'negRate')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Neg. rate
+                            <ColumnFilter columnId="negRate" label="Neg. rate" active={hostColumnFilters()['negRate'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['negRate'] = s; else delete n['negRate']; return n; }); }} />
+                          </div>
+                        </th></Show>
+                        <Show when={hostColumns().find(column => column.id === 'interface')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">Interface
                             <ColumnFilter columnId="interface" label="Interface" active={hostColumnFilters()['interface'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['interface'] = s; else delete n['interface']; return n; }); }} />
                           </div>
-                        </th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                        </th></Show>
+                        <Show when={hostColumns().find(column => column.id === 'rssi')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">Signal
                             <ColumnFilter columnId="rssi" label="Signal" active={hostColumnFilters()['rssi'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['rssi'] = s; else delete n['rssi']; return n; }); }} />
                           </div>
-                        </th>
-                        <th class="text-left px-3 py-2 text-xs font-medium text-muted">
+                        </th></Show>
+                        <Show when={hostColumns().find(column => column.id === 'uptime')?.visible}><th class="text-left px-3 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">Uptime
                             <ColumnFilter columnId="uptime" label="Uptime" active={hostColumnFilters()['uptime'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['uptime'] = s; else delete n['uptime']; return n; }); }} />
                           </div>
-                        </th>
+                        </th></Show>
                       </tr>
                     </thead>
                     <tbody>
                       <For each={filteredHosts()}>
                         {(host) => (
                           <tr class="border-t border-subtle/50 hover:bg-elevated/30">
-                            <td class="px-3 py-2 text-primary">{host.hostname}</td>
-                            <td class="px-3 py-2 text-primary font-mono">{host.ip}</td>
-                            <td class="px-3 py-2 text-secondary font-mono text-xs">{host.mac}</td>
-                            <td class="px-3 py-2">
+                            <Show when={hostColumns().find(column => column.id === 'hostname')?.visible}><td class="px-3 py-2 text-primary">{host.hostname}</td></Show>
+                            <Show when={hostColumns().find(column => column.id === 'ip')?.visible}><td class="px-3 py-2 text-primary font-mono">{host.ip}</td></Show>
+                            <Show when={hostColumns().find(column => column.id === 'ipv6')?.visible}><td class="px-3 py-2 text-primary font-mono">{host.ipv6}</td></Show>
+                            <Show when={hostColumns().find(column => column.id === 'mac')?.visible}><td class="px-3 py-2 text-secondary font-mono text-xs">{host.mac}</td></Show>
+                            <Show when={hostColumns().find(column => column.id === 'negRate')?.visible}><td class="px-3 py-2 text-secondary">{host.negRate}</td></Show>
+                            <Show when={hostColumns().find(column => column.id === 'interface')?.visible}><td class="px-3 py-2">
                               <span class={`px-2 py-0.5 rounded text-xs ${
                                 host.interface.startsWith('WiFi') || host.interface.startsWith('SSID')
                                   ? 'bg-sky-500/20 text-sky-400'
@@ -1429,13 +1524,13 @@ const DeviceDetail: Component = () => {
                               }`}>
                                 {host.interface}
                               </span>
-                            </td>
-                            <td class="px-3 py-2 text-secondary">
+                            </td></Show>
+                            <Show when={hostColumns().find(column => column.id === 'rssi')?.visible}><td class="px-3 py-2 text-secondary">
                               {host.rssi && host.rssi !== '-' ? `${host.rssi} dBm` : '-'}
-                            </td>
-                            <td class="px-3 py-2 text-secondary text-xs">
+                            </td></Show>
+                            <Show when={hostColumns().find(column => column.id === 'uptime')?.visible}><td class="px-3 py-2 text-secondary text-xs">
                               {host.uptime ? formatUptime(host.uptime) : '-'}
-                            </td>
+                            </td></Show>
                           </tr>
                         )}
                       </For>
