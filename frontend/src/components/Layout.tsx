@@ -21,6 +21,7 @@ const navigation = [
     { href: '/firmwares', label: 'Firmware library', icon: HardDrive },
     { href: '/security', label: 'Access controls', icon: ShieldCheck, fullOnly: true },
     { href: '/settings', label: 'System settings', icon: Settings, children: [
+      { href: '/settings/general', label: 'General' },
       { href: '/settings/users', label: 'Users and Roles' },
       { href: '/settings/delivery', label: 'Delivery & Connection' },
       { href: '/settings/provisioning', label: 'Provisioning' },
@@ -36,6 +37,7 @@ const pageNames: Record<string, string> = {
   '/firmwares': 'Firmware library',
   '/security': 'Security center',
   '/settings': 'System settings',
+  '/settings/general': 'General',
   '/settings/users': 'Users and Roles',
   '/settings/delivery': 'Delivery & Connection Request',
   '/settings/provisioning': 'Provisioning',

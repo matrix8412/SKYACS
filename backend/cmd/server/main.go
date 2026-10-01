@@ -355,6 +355,7 @@ func runAutoMigrate(db *gorm.DB) error {
 		{Key: "connection_request_username", Value: "", Description: "Connection request username"},
 		{Key: "connection_request_password", Value: "", Description: "Connection request password"},
 		{Key: "use_auto_conn_credentials", Value: "false", Description: "Derive unique per-device credentials with HMAC-SHA256"},
+		{Key: "default_page_size", Value: "20", Description: "Default number of rows per page in list views"},
 	}
 	for index := range defaultSettings {
 		if err := db.Where(database.Setting{Key: defaultSettings[index].Key}).FirstOrCreate(&defaultSettings[index]).Error; err != nil {
