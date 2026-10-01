@@ -127,10 +127,6 @@ const MetricChart: Component<MetricChartProps> = (props) => {
 
       if (r.aggregates && r.aggregates.length > 0) {
         series.push(r.aggregates.map((a) => a.avg / scale.divisor));
-        if (isAggregated) {
-          series.push(r.aggregates.map((a) => a.min / scale.divisor));
-          series.push(r.aggregates.map((a) => a.max / scale.divisor));
-        }
       } else if (r.samples && r.samples.length > 0) {
         series.push(r.samples.map((s) => s.value / scale.divisor));
       } else {
@@ -177,25 +173,6 @@ const MetricChart: Component<MetricChartProps> = (props) => {
         points: { show: showPoints, size: 4 },
         scale,
       });
-
-      if (s.isAggregated) {
-        specs.push({
-          label: `${label} min`,
-          stroke: hexToRgba(color, 0.3),
-          width: 1,
-          fill: hexToRgba(color, 0.03),
-          points: { show: showPoints, size: 3 },
-          scale,
-        });
-        specs.push({
-          label: `${label} max`,
-          stroke: hexToRgba(color, 0.3),
-          width: 1,
-          fill: hexToRgba(color, 0.03),
-          points: { show: showPoints, size: 3 },
-          scale,
-        });
-      }
     }
 
     const scales: uPlot.Scales = {
@@ -264,7 +241,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
           for (let i = 0; i < metrics.length; i++) {
             const m = metrics[i];
             const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
-            const valIdx = 1 + i * (s.isAggregated ? 3 : 1);
+            const valIdx = 1 + i;
             const val = self.data[valIdx]?.[idx];
             if (val == null) continue;
             hasVal = true;
