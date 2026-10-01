@@ -8,7 +8,9 @@ import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
+import { usePageSize } from '../lib/usePageSize';
 
 interface ColumnConfig {
   id: string;
@@ -49,7 +51,8 @@ const Devices: Component = () => {
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const { isFullAccess } = useAuth();
   const { notify } = useFeedback();
-  const limit = 20;
+  const { pageSize, changePageSize } = usePageSize('devices', 20);
+  const handlePageSizeChange = (size: number) => { changePageSize(size); setPage(0); };
 
   onMount(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -77,11 +80,11 @@ const Devices: Component = () => {
   });
 
   const [deviceList, { refetch }] = createResource(
-    () => page(),
-    (p) => api.getDevices(limit, p * limit)
+    () => [page(), pageSize()],
+    ([p, l]) => api.getDevices(l, p * l)
   );
 
-  const totalPages = () => Math.ceil((deviceList()?.total ?? 0) / limit);
+  const totalPages = () => Math.ceil((deviceList()?.total ?? 0) / pageSize());
 
   const visibleColumns = createMemo(() => 
     columns().filter(c => c.visible).sort((a, b) => a.order - b.order)
@@ -517,31 +520,7 @@ const Devices: Component = () => {
         </div>
       </div></Show>
 
-      <Show when={totalPages() > 1}>
-        <div class="flex items-center justify-between text-sm">
-          <p class="text-muted">
-            Showing {page() * limit + 1} - {Math.min((page() + 1) * limit, deviceList()?.total ?? 0)} of {deviceList()?.total ?? 0}
-          </p>
-          <div class="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page() === 0}
-              class="btn btn-secondary py-1.5 px-3"
-            >
-              <ChevronLeft size={14} />
-              Previous
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages() - 1, p + 1))}
-              disabled={page() >= totalPages() - 1}
-              class="btn btn-secondary py-1.5 px-3"
-            >
-              Next
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        </div>
-      </Show>
+      <Pagination page={page()} totalPages={totalPages()} totalItems={deviceList()?.total ?? 0} pageSize={pageSize()} onPageChange={setPage} storageKey="devices" onPageSizeChange={handlePageSizeChange} />
     </div>
   );
 };

@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
+import { usePageSize } from '../lib/usePageSize';
 
 const UsersPage: Component = () => {
   const { isFullAccess } = useAuth();
@@ -26,7 +27,8 @@ const UsersPage: Component = () => {
   const [userForm, setUserForm] = createSignal({ username: '', password: '', role: 'read' as 'full' | 'read' });
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [userPage, setUserPage] = createSignal(0);
-  const USER_PAGE_SIZE = 15;
+  const { pageSize, changePageSize } = usePageSize('users', 15);
+  const handlePageSizeChange = (size: number) => { changePageSize(size); setUserPage(0); };
 
   const getFilterValue = (user: User, colId: string): string => {
     switch (colId) {
@@ -43,10 +45,10 @@ const UsersPage: Component = () => {
   });
   const pagedUsers = createMemo(() => {
     const all = filteredUsers();
-    const start = userPage() * USER_PAGE_SIZE;
-    return all.slice(start, start + USER_PAGE_SIZE);
+    const start = userPage() * pageSize();
+    return all.slice(start, start + pageSize());
   });
-  const userTotalPages = createMemo(() => Math.ceil(filteredUsers().length / USER_PAGE_SIZE));
+  const userTotalPages = createMemo(() => Math.ceil(filteredUsers().length / pageSize()));
 
   const handleCreateUser = async () => {
     if (pendingAction()) return;
@@ -168,7 +170,7 @@ const UsersPage: Component = () => {
             </tbody>
           </table></div>
           <div class="mt-3">
-            <Pagination page={userPage()} totalPages={userTotalPages()} totalItems={filteredUsers().length} pageSize={USER_PAGE_SIZE} onPageChange={setUserPage} />
+            <Pagination page={userPage()} totalPages={userTotalPages()} totalItems={filteredUsers().length} pageSize={pageSize()} onPageChange={setUserPage} storageKey="users" onPageSizeChange={handlePageSizeChange} />
           </div>
         </Show>
         <Show when={!users.loading && !users.error && (users()?.length ?? 0) === 0}><EmptyState compact title="No additional operators exist" description="Create a named operator account instead of sharing administrative credentials." action={<button type="button" class="btn btn-primary" onClick={openCreateUser}>Add operator</button>} /></Show>

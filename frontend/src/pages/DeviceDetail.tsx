@@ -12,6 +12,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { getWanProfiles } from '../lib/wanProfiles';
+import { usePageSize } from '../lib/usePageSize';
 
 const DeviceDetail: Component = () => {
   const params = useParams<{ serial: string }>();
@@ -28,21 +29,23 @@ const DeviceDetail: Component = () => {
   const [deviceFaults] = createResource(serial, api.getDeviceFaults);
   const [metricDefs] = createResource(api.getMetricDefinitions);
   const [taskPage, setTaskPage] = createSignal(0);
-  const TASK_PAGE_SIZE = 10;
+  const { pageSize: taskPageSize, changePageSize: changeTaskPageSize } = usePageSize('device_tasks', 10);
+  const handleTaskPageSizeChange = (size: number) => { changeTaskPageSize(size); setTaskPage(0); };
   const pagedTasks = createMemo(() => {
     const all = tasks() || [];
-    const start = taskPage() * TASK_PAGE_SIZE;
-    return all.slice(start, start + TASK_PAGE_SIZE);
+    const start = taskPage() * taskPageSize();
+    return all.slice(start, start + taskPageSize());
   });
-  const taskTotalPages = createMemo(() => Math.ceil((tasks()?.length || 0) / TASK_PAGE_SIZE));
+  const taskTotalPages = createMemo(() => Math.ceil((tasks()?.length || 0) / taskPageSize()));
   const [faultPage, setFaultPage] = createSignal(0);
-  const DEVICE_FAULT_PAGE_SIZE = 10;
+  const { pageSize: faultPageSize, changePageSize: changeFaultPageSize } = usePageSize('device_faults', 10);
+  const handleFaultPageSizeChange = (size: number) => { changeFaultPageSize(size); setFaultPage(0); };
   const pagedDeviceFaults = createMemo(() => {
     const all = deviceFaults() || [];
-    const start = faultPage() * DEVICE_FAULT_PAGE_SIZE;
-    return all.slice(start, start + DEVICE_FAULT_PAGE_SIZE);
+    const start = faultPage() * faultPageSize();
+    return all.slice(start, start + faultPageSize());
   });
-  const deviceFaultTotalPages = createMemo(() => Math.ceil((deviceFaults()?.length || 0) / DEVICE_FAULT_PAGE_SIZE));
+  const deviceFaultTotalPages = createMemo(() => Math.ceil((deviceFaults()?.length || 0) / faultPageSize()));
   const unresolvedFaultCount = createMemo(() => (deviceFaults() || []).filter(f => !f.resolved).length);
 
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
@@ -1477,7 +1480,7 @@ const DeviceDetail: Component = () => {
                   </table>
                 </div>
                 <div class="px-4 py-3">
-                  <Pagination page={taskPage()} totalPages={taskTotalPages()} totalItems={tasks()?.length || 0} pageSize={TASK_PAGE_SIZE} onPageChange={setTaskPage} />
+                  <Pagination page={taskPage()} totalPages={taskTotalPages()} totalItems={tasks()?.length || 0} pageSize={taskPageSize()} onPageChange={setTaskPage} storageKey="device_tasks" onPageSizeChange={handleTaskPageSizeChange} />
                 </div>
               </Show>
               </Show>
@@ -1536,7 +1539,7 @@ const DeviceDetail: Component = () => {
                     </table>
                   </div>
                   <div class="px-4 py-3">
-                    <Pagination page={faultPage()} totalPages={deviceFaultTotalPages()} totalItems={deviceFaults()?.length || 0} pageSize={DEVICE_FAULT_PAGE_SIZE} onPageChange={setFaultPage} />
+                    <Pagination page={faultPage()} totalPages={deviceFaultTotalPages()} totalItems={deviceFaults()?.length || 0} pageSize={faultPageSize()} onPageChange={setFaultPage} storageKey="device_faults" onPageSizeChange={handleFaultPageSizeChange} />
                   </div>
                 </Show>
               }>

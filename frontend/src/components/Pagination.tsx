@@ -1,6 +1,7 @@
 import type { Component } from 'solid-js';
-import { Show } from 'solid-js';
+import { For, Show } from 'solid-js';
 import { ChevronLeft, ChevronRight } from 'lucide-solid';
+import { PAGE_SIZE_OPTIONS } from '../lib/usePageSize';
 
 interface PaginationProps {
   page: number;
@@ -8,6 +9,9 @@ interface PaginationProps {
   totalItems: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  /** When provided, a per-table page-size selector is shown and persisted in localStorage. */
+  storageKey?: string;
+  onPageSizeChange?: (size: number) => void;
 }
 
 const Pagination: Component<PaginationProps> = (props) => {
@@ -20,7 +24,19 @@ const Pagination: Component<PaginationProps> = (props) => {
         <p class="text-muted">
           Showing {start()} - {end()} of {props.totalItems}
         </p>
-        <div class="flex gap-2">
+        <div class="flex items-center gap-2">
+          <Show when={props.storageKey}>
+            <select
+              value={String(props.pageSize)}
+              onChange={(e) => props.onPageSizeChange?.(parseInt(e.currentTarget.value, 10))}
+              class="input text-xs py-1.5 w-auto"
+              aria-label="Rows per page"
+            >
+              <For each={PAGE_SIZE_OPTIONS}>
+                {(opt) => <option value={opt}>{opt}</option>}
+              </For>
+            </select>
+          </Show>
           <button
             onClick={() => props.onPageChange(Math.max(0, props.page - 1))}
             disabled={props.page === 0}

@@ -9,6 +9,7 @@ import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
+import { usePageSize } from '../lib/usePageSize';
 
 const Firmwares: Component = () => {
   const { isFullAccess } = useAuth();
@@ -18,7 +19,8 @@ const Firmwares: Component = () => {
   const [validation, setValidation] = createSignal<{ file?: string; version?: string }>({});
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [fwPage, setFwPage] = createSignal(0);
-  const FW_PAGE_SIZE = 15;
+  const { pageSize, changePageSize } = usePageSize('firmwares', 15);
+  const handlePageSizeChange = (size: number) => { changePageSize(size); setFwPage(0); };
 
   const getFilterValue = (fw: Firmware, colId: string): string => {
     switch (colId) {
@@ -37,10 +39,10 @@ const Firmwares: Component = () => {
   });
   const pagedFirmwares = createMemo(() => {
     const all = filteredFirmwares();
-    const start = fwPage() * FW_PAGE_SIZE;
-    return all.slice(start, start + FW_PAGE_SIZE);
+    const start = fwPage() * pageSize();
+    return all.slice(start, start + pageSize());
   });
-  const fwTotalPages = createMemo(() => Math.ceil(filteredFirmwares().length / FW_PAGE_SIZE));
+  const fwTotalPages = createMemo(() => Math.ceil(filteredFirmwares().length / pageSize()));
 
   const [formData, setFormData] = createSignal({
     version: '',
@@ -248,7 +250,7 @@ const Firmwares: Component = () => {
             </tbody>
           </table></div>
           <div class="px-4 py-3">
-            <Pagination page={fwPage()} totalPages={fwTotalPages()} totalItems={filteredFirmwares().length} pageSize={FW_PAGE_SIZE} onPageChange={setFwPage} />
+            <Pagination page={fwPage()} totalPages={fwTotalPages()} totalItems={filteredFirmwares().length} pageSize={pageSize()} onPageChange={setFwPage} storageKey="firmwares" onPageSizeChange={handlePageSizeChange} />
           </div>
         </Show>
       </div>

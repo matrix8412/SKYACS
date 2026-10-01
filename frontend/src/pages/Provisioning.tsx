@@ -9,6 +9,7 @@ import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
+import { usePageSize } from '../lib/usePageSize';
 
 interface ProvColumnConfig {
   id: string;
@@ -77,13 +78,14 @@ const Provisioning: Component = () => {
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
   const [provPage, setProvPage] = createSignal(0);
-  const PROV_PAGE_SIZE = 15;
+  const { pageSize, changePageSize } = usePageSize('provisioning', 15);
+  const handlePageSizeChange = (size: number) => { changePageSize(size); setProvPage(0); };
   const pagedProvRules = createMemo(() => {
     const all = filteredProvRules();
-    const start = provPage() * PROV_PAGE_SIZE;
-    return all.slice(start, start + PROV_PAGE_SIZE);
+    const start = provPage() * pageSize();
+    return all.slice(start, start + pageSize());
   });
-  const provTotalPages = createMemo(() => Math.ceil(filteredProvRules().length / PROV_PAGE_SIZE));
+  const provTotalPages = createMemo(() => Math.ceil(filteredProvRules().length / pageSize()));
 
   onMount(() => {
     loadProvRules();
@@ -419,7 +421,7 @@ const Provisioning: Component = () => {
               </table>
             </div>
             <div class="px-4 py-3">
-              <Pagination page={provPage()} totalPages={provTotalPages()} totalItems={filteredProvRules().length} pageSize={PROV_PAGE_SIZE} onPageChange={setProvPage} />
+              <Pagination page={provPage()} totalPages={provTotalPages()} totalItems={filteredProvRules().length} pageSize={pageSize()} onPageChange={setProvPage} storageKey="provisioning" onPageSizeChange={handlePageSizeChange} />
             </div>
           </Show>
 

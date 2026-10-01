@@ -822,6 +822,7 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 	allowed := map[string]bool{
 		"firmware_base_url": true, "connection_request_username": true,
 		"connection_request_password": true, "use_auto_conn_credentials": true,
+		"default_page_size": true,
 	}
 	for key, value := range settings {
 		if !allowed[key] {
@@ -850,6 +851,13 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 	if value, ok := settings["use_auto_conn_credentials"]; ok && value != "true" && value != "false" {
 		respondError(w, http.StatusBadRequest, "use_auto_conn_credentials must be true or false")
 		return
+	}
+	if value, ok := settings["default_page_size"]; ok {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 5 || parsed > 100 {
+			respondError(w, http.StatusBadRequest, "default_page_size must be an integer between 5 and 100")
+			return
+		}
 	}
 	autoCredentials := settings["use_auto_conn_credentials"] == "true"
 	if _, supplied := settings["use_auto_conn_credentials"]; !supplied {

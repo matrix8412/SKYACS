@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
+import { usePageSize } from '../lib/usePageSize';
 
 const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> = {
   name: '',
@@ -38,7 +39,8 @@ const MetricsSettings: Component = () => {
   const [metricForm, setMetricForm] = createSignal<Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>>(EMPTY_METRIC);
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [metricPage, setMetricPage] = createSignal(0);
-  const METRIC_PAGE_SIZE = 15;
+  const { pageSize, changePageSize } = usePageSize('metrics', 15);
+  const handlePageSizeChange = (size: number) => { changePageSize(size); setMetricPage(0); };
 
   const getFilterValue = (def: MetricDefinition, colId: string): string => {
     switch (colId) {
@@ -59,10 +61,10 @@ const MetricsSettings: Component = () => {
   });
   const pagedMetrics = createMemo(() => {
     const all = filteredMetrics();
-    const start = metricPage() * METRIC_PAGE_SIZE;
-    return all.slice(start, start + METRIC_PAGE_SIZE);
+    const start = metricPage() * pageSize();
+    return all.slice(start, start + pageSize());
   });
-  const metricTotalPages = createMemo(() => Math.ceil(filteredMetrics().length / METRIC_PAGE_SIZE));
+  const metricTotalPages = createMemo(() => Math.ceil(filteredMetrics().length / pageSize()));
 
   const openCreateMetric = () => {
     setEditingMetric(null);
@@ -239,7 +241,7 @@ const MetricsSettings: Component = () => {
             </table>
           </div>
           <div class="mt-3">
-            <Pagination page={metricPage()} totalPages={metricTotalPages()} totalItems={filteredMetrics().length} pageSize={METRIC_PAGE_SIZE} onPageChange={setMetricPage} />
+            <Pagination page={metricPage()} totalPages={metricTotalPages()} totalItems={filteredMetrics().length} pageSize={pageSize()} onPageChange={setMetricPage} storageKey="metrics" onPageSizeChange={handlePageSizeChange} />
           </div>
         </Show>
       </div>

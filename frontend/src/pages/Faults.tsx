@@ -10,6 +10,7 @@ import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
+import { usePageSize } from '../lib/usePageSize';
 
 const Faults: Component = () => {
   const { isFullAccess } = useAuth();
@@ -24,7 +25,8 @@ const Faults: Component = () => {
   const [stats, { refetch: refetchStats }] = createResource(() => api.getFaultStats());
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [faultPage, setFaultPage] = createSignal(0);
-  const FAULT_PAGE_SIZE = 20;
+  const { pageSize, changePageSize } = usePageSize('faults', 20);
+  const handlePageSizeChange = (size: number) => { changePageSize(size); setFaultPage(0); };
 
   const getFilterValue = (fault: { serial_number: string; fault_code: string; fault_string: string; parameter_name: string; created_at: string; resolved: boolean }, colId: string): string => {
     switch (colId) {
@@ -44,10 +46,10 @@ const Faults: Component = () => {
   });
   const pagedFaults = createMemo(() => {
     const all = filteredFaults();
-    const start = faultPage() * FAULT_PAGE_SIZE;
-    return all.slice(start, start + FAULT_PAGE_SIZE);
+    const start = faultPage() * pageSize();
+    return all.slice(start, start + pageSize());
   });
-  const faultTotalPages = createMemo(() => Math.ceil(filteredFaults().length / FAULT_PAGE_SIZE));
+  const faultTotalPages = createMemo(() => Math.ceil(filteredFaults().length / pageSize()));
 
   const handleResolve = async (id: number) => {
     setPendingFault(id);
@@ -240,7 +242,7 @@ const Faults: Component = () => {
               </table>
             </div>
             <div class="px-4 py-3">
-              <Pagination page={faultPage()} totalPages={faultTotalPages()} totalItems={filteredFaults().length} pageSize={FAULT_PAGE_SIZE} onPageChange={setFaultPage} />
+              <Pagination page={faultPage()} totalPages={faultTotalPages()} totalItems={filteredFaults().length} pageSize={pageSize()} onPageChange={setFaultPage} storageKey="faults" onPageSizeChange={handlePageSizeChange} />
             </div>
           </Show>
         </Show>
