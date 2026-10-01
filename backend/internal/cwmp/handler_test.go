@@ -194,3 +194,51 @@ func TestAddObjectFaultClearsProvisioning(t *testing.T) {
 		t.Fatal("provisioning continued after AddObject fault")
 	}
 }
+
+func TestFaultClearsLastSentContext(t *testing.T) {
+	handler := NewHandler(nil)
+	session := handler.sessions.GetOrCreate("fault-context-test", "SERIAL")
+	session.State = StateProcessingTasks
+	session.DeviceID = 1
+	session.LastSentContext = "InternetGatewayDevice.WANDevice.1.WANConnectionHandling.1"
+
+	_, err := handler.handleFault(context.Background(), &SOAPFault{Detail: FaultDetail{CWMPFault: &CWMPFault{
+		FaultCode: "9005", FaultString: "Invalid parameter name",
+	}}}, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.LastSentContext != "" {
+		t.Fatalf("LastSentContext not cleared after fault, got %q", session.LastSentContext)
+	}
+}
+
+func TestSetParameterValuesResponseClearsLastSentContext(t *testing.T) {
+	handler := NewHandler(nil)
+	session := handler.sessions.GetOrCreate("spv-context-test", "SERIAL")
+	session.State = StateProcessingTasks
+	session.LastSentContext = "InternetGatewayDevice.LANDevice.1.LANHostConfigTable"
+
+	_, err := handler.handleSetParameterValuesResponse(context.Background(), &SetParameterValuesResp{Status: 0}, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.LastSentContext != "" {
+		t.Fatalf("LastSentContext not cleared after SPV response, got %q", session.LastSentContext)
+	}
+}
+
+func TestAddObjectResponseClearsLastSentContext(t *testing.T) {
+	handler := NewHandler(nil)
+	session := handler.sessions.GetOrCreate("addobj-context-test", "SERIAL")
+	session.State = StateProcessingTasks
+	session.LastSentContext = "InternetGatewayDevice.LANDevice.1.LANHostConfigTable"
+
+	_, err := handler.handleAddObjectResponse(context.Background(), &AddObjectResponse{InstanceNumber: "1", Status: 0}, session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if session.LastSentContext != "" {
+		t.Fatalf("LastSentContext not cleared after AddObject response, got %q", session.LastSentContext)
+	}
+}

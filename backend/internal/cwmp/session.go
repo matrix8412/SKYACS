@@ -49,6 +49,11 @@ type Session struct {
 	MetricFetchParams []string
 	LastMetricFetch   time.Time
 
+	// LastSentContext holds a human-readable description of the last CWMP
+	// operation sent to the CPE (parameter names, object name, etc.).
+	// Used to populate Fault.ParameterName when a SOAP Fault arrives.
+	LastSentContext string
+
 	State        SessionState
 	CreatedAt    time.Time
 	LastActivity time.Time

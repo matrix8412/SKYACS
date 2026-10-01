@@ -477,6 +477,7 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 		nextObj := session.AddObjectQueue[session.AddObjectPhase]
 		nextObj.ObjectName = resolveAddObjectReferences(nextObj.ObjectName, session.AddObjectInstances)
 		session.State = StateProcessingTasks
+		session.LastSentContext = nextObj.ObjectName
 		log.Printf("Sending AddObject: %s to %s", nextObj.ObjectName, sessionID)
 		return nextObj, namespace, nil
 	}
@@ -484,10 +485,16 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 	if session.ConditionalFetchActive && len(session.PendingConditionalParams) > 0 {
 		session.ConditionalFetchActive = false
 		session.State = StateProcessingTasks
+		session.LastSentContext = strings.Join(session.PendingConditionalParams, ", ")
 		log.Printf("Sending GPV for %d conditional params to %s", len(session.PendingConditionalParams), sessionID)
 		return &GetParameterValues{ParameterNames: session.PendingConditionalParams}, namespace, nil
 	}
 	if session.Provisioning != nil {
+		var paramNames []string
+		for _, p := range session.Provisioning.ParameterList.Parameters {
+			paramNames = append(paramNames, p.Name)
+		}
+		session.LastSentContext = strings.Join(paramNames, ", ")
 		request = takeProvisioning(session)
 		session.State = StateProcessingTasks
 		return request, namespace, nil
@@ -496,11 +503,13 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 		session.AutoFetchReady = false
 		session.AutoFetchPhase = 1
 		session.State = StateProcessingTasks
+		session.LastSentContext = session.DataModelRoot
 		return &GetParameterValues{ParameterNames: []string{session.DataModelRoot}}, namespace, nil
 	}
 	if session.MetricFetchReady {
 		session.MetricFetchReady = false
 		session.State = StateProcessingTasks
+		session.LastSentContext = strings.Join(session.MetricFetchParams, ", ")
 		return &GetParameterValues{ParameterNames: session.MetricFetchParams}, namespace, nil
 	}
 	session.State = StateIdle
@@ -629,6 +638,7 @@ func (h *Handler) handleSetParameterValuesResponse(ctx context.Context, resp *Se
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
+	session.LastSentContext = ""
 
 	if session.State == StateProcessingTasks && session.CurrentTaskID > 0 {
 		if h.taskRepo != nil {
@@ -664,6 +674,7 @@ func (h *Handler) handleAddObjectResponse(ctx context.Context, resp *AddObjectRe
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
+	session.LastSentContext = ""
 
 	if session.State != StateProcessingTasks {
 		return nil, nil
@@ -895,14 +906,16 @@ func (h *Handler) handleFault(ctx context.Context, fault *SOAPFault, remoteAddr 
 	if session.State == StateProcessingTasks {
 		if h.faultRepo != nil && session.DeviceID > 0 && session.AutoFetchPhase == 0 {
 			deviceFault := &models.Fault{
-				DeviceID:    session.DeviceID,
-				FaultCode:   faultCode,
-				FaultString: faultMessage,
+				DeviceID:      session.DeviceID,
+				FaultCode:     faultCode,
+				FaultString:   faultMessage,
+				ParameterName: session.LastSentContext,
 			}
 			if err := h.faultRepo.Create(ctx, deviceFault); err != nil {
 				log.Printf("Error saving fault: %v", err)
 			}
 		}
+		session.LastSentContext = ""
 		if session.CurrentTaskID == 0 && len(session.AddObjectQueue) > 0 {
 			log.Printf("Aborting provisioning after AddObject fault: %s - %s", faultCode, faultMessage)
 			session.AddObjectQueue = nil
