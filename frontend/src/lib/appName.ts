@@ -1,1 +1,17 @@
-export const APP_NAME = import.meta.env.VITE_APP_NAME || 'SkydashNET';
+import { createSignal } from 'solid-js';
+import { api } from './api';
+
+export const APP_NAME = import.meta.env.VITE_APP_NAME || 'SKYACS';
+
+const [appName, setAppName] = createSignal<string>(APP_NAME);
+
+export { appName };
+
+export function initAppName() {
+  api.getMeta().then((meta) => {
+    if (meta.app_name) {
+      setAppName(meta.app_name);
+      document.title = meta.app_name;
+    }
+  }).catch(() => { /* keep fallback */ });
+}

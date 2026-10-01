@@ -9,9 +9,10 @@ import '@fontsource/ibm-plex-mono/latin-600.css'
 import { render } from 'solid-js/web'
 import './index.css'
 import App from './App.tsx'
-import { APP_NAME } from './lib/appName'
+import { appName, initAppName } from './lib/appName'
 
-document.title = APP_NAME
+document.title = appName()
+initAppName()
 
 const root = document.getElementById('root')
 

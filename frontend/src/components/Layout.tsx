@@ -8,7 +8,7 @@ import {
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { APP_VERSION } from '../lib/version';
-import { APP_NAME } from '../lib/appName';
+import { appName } from '../lib/appName';
 import { useTheme } from '../lib/theme';
 
 const navigation = [
@@ -50,7 +50,7 @@ const Brand = () => (
       <span /><span /><span />
     </div>
     <div>
-      <div class="brand-name">SKYACS</div>
+      <div class="brand-name">{appName()}</div>
       <div class="brand-subtitle">Independent CWMP control plane</div>
     </div>
   </div>
@@ -150,7 +150,7 @@ const Layout: ParentComponent = (props) => {
             </div>
             <button class="icon-button" onClick={logout} aria-label="Sign out" title="Sign out"><LogOut size={16} /></button>
           </div>
-          <div class="sidebar-meta"><span>{APP_NAME}</span><span>v{APP_VERSION}</span></div>
+          <div class="sidebar-meta"><span>{appName()}</span><span>v{APP_VERSION}</span></div>
         </div>
       </aside>
 
@@ -159,7 +159,7 @@ const Layout: ParentComponent = (props) => {
           <div class="topbar-title">
             <button ref={menuButton} class="icon-button lg:hidden" aria-label="Open navigation" aria-expanded={sidebarOpen()} onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
             <div>
-              <p>SKYACS <span>/</span></p>
+              <p>{appName()} <span>/</span></p>
               <h1>{pageTitle()}</h1>
             </div>
           </div>

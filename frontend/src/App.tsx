@@ -1,8 +1,9 @@
 import type { Component, ParentComponent } from 'solid-js';
-import { lazy, Show } from 'solid-js';
+import { lazy, Show, createEffect } from 'solid-js';
 import { Router, Route, Navigate } from '@solidjs/router';
 import { AuthProvider, useAuth } from './lib/auth';
 import { useTheme } from './lib/theme';
+import { appName } from './lib/appName';
 import Layout from './components/Layout';
 import { FeedbackProvider } from './components/Feedback';
 const Login = lazy(() => import('./pages/Login'));
@@ -21,6 +22,8 @@ const GeneralSettings = lazy(() => import('./pages/GeneralSettings'));
 
 // Initialize theme on app load
 useTheme();
+
+createEffect(() => { document.title = appName(); });
 
 const ProtectedLayout: ParentComponent = (props) => {
   const { isAuthenticated, ready } = useAuth();

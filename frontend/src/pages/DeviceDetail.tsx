@@ -13,6 +13,7 @@ import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { getWanProfiles } from '../lib/wanProfiles';
 import { usePageSize } from '../lib/usePageSize';
+import { appName } from '../lib/appName';
 
 interface HostColumnConfig {
   id: string;
@@ -196,8 +197,8 @@ const DeviceDetail: Component = () => {
 
   createEffect(() => {
     const s = serial();
-    document.title = s ? `${s} - SKYACS` : 'SKYACS';
-    onCleanup(() => { document.title = 'SKYACS'; });
+    document.title = s ? `${s} - ${appName()}` : appName();
+    onCleanup(() => { document.title = appName(); });
   });
 
   const showMessage = (type: 'success' | 'error', text: string, detail?: string) => {

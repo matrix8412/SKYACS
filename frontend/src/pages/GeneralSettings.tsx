@@ -24,10 +24,15 @@ const GeneralSettings: Component = () => {
       notify({ tone: 'error', title: 'Invalid value', message: 'Default page size must be between 5 and 100.' });
       return;
     }
+    const appName = getValue('app_name').trim();
+    if (!appName || appName.length > 64) {
+      notify({ tone: 'error', title: 'Invalid value', message: 'Application name must be 1–64 characters.' });
+      return;
+    }
     const showPoints = getValue('chart_show_points') !== 'false' ? 'true' : 'false';
     setSaving(true);
     try {
-      await api.updateSettings({ default_page_size: String(pageSize), chart_show_points: showPoints });
+      await api.updateSettings({ default_page_size: String(pageSize), chart_show_points: showPoints, app_name: appName });
       notify({ tone: 'success', title: 'Settings saved', message: 'General settings have been updated.' });
       refetch();
       setFormData({});
@@ -71,6 +76,20 @@ const GeneralSettings: Component = () => {
                 disabled={!isFullAccess()}
               />
               <p class="text-[11px] text-muted mt-1">Applies to device lists, fault tables, provisioning rules, and other paginated views.</p>
+            </div>
+            <div>
+              <label for="app-name" class="block text-xs text-muted mb-1.5">Application name</label>
+              <input
+                id="app-name"
+                type="text"
+                value={getValue('app_name') || 'SKYACS'}
+                onInput={(e) => setFormData((prev) => ({ ...prev, app_name: e.currentTarget.value }))}
+                placeholder="SKYACS"
+                maxlength={64}
+                class="input w-48"
+                disabled={!isFullAccess()}
+              />
+              <p class="text-[11px] text-muted mt-1">Brand name shown in the header, footer, login page, and browser tab.</p>
             </div>
             <div class="flex items-center justify-between pt-4 border-t border-subtle">
               <div>

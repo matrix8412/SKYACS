@@ -93,6 +93,7 @@ func (r *Router) Handler() http.Handler {
 
 	// Public endpoints (no auth required)
 	mux.HandleFunc("GET /health", r.handleHealth)
+	mux.HandleFunc("GET /meta", r.handleMeta)
 	mux.HandleFunc("POST /auth/login", r.handleLogin)
 	mux.HandleFunc("GET /files/{id}/{filename}", r.handleFirmwareFile)
 
@@ -200,6 +201,14 @@ func (r *Router) handleHealth(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (r *Router) handleMeta(w http.ResponseWriter, req *http.Request) {
+	appName := "SKYACS"
+	if s, err := r.settingsRepo.Get(req.Context(), "app_name"); err == nil && s != nil && s.Value != "" {
+		appName = s.Value
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"app_name": appName})
 }
 
 func (r *Router) handleListDevices(w http.ResponseWriter, req *http.Request) {
@@ -822,7 +831,7 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 	allowed := map[string]bool{
 		"firmware_base_url": true, "connection_request_username": true,
 		"connection_request_password": true, "use_auto_conn_credentials": true,
-		"default_page_size": true, "chart_show_points": true,
+		"default_page_size": true, "chart_show_points": true, "app_name": true,
 	}
 	for key, value := range settings {
 		if !allowed[key] {
@@ -862,6 +871,14 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 	if value, ok := settings["chart_show_points"]; ok && value != "true" && value != "false" {
 		respondError(w, http.StatusBadRequest, "chart_show_points must be true or false")
 		return
+	}
+	if value, ok := settings["app_name"]; ok {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" || len(trimmed) > 64 {
+			respondError(w, http.StatusBadRequest, "app_name must be a non-empty string of at most 64 characters")
+			return
+		}
+		settings["app_name"] = trimmed
 	}
 	autoCredentials := settings["use_auto_conn_credentials"] == "true"
 	if _, supplied := settings["use_auto_conn_credentials"]; !supplied {

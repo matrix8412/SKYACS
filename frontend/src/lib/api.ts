@@ -97,6 +97,7 @@ export const api = {
   resolveFault: (id: number) => request<{ status: string }>(`/faults/${id}/resolve`, { method: 'POST' }),
   deleteFault: (id: number) => request<{ status: string }>(`/faults/${id}`, { method: 'DELETE' }),
 
+  getMeta: () => request<{ app_name: string }>('/meta'),
   getSettings: () => request<Record<string, string>>('/settings'),
   updateSettings: (settings: Record<string, string>) => request<{ status: string }>('/settings', { method: 'PUT', body: JSON.stringify(settings) }),
   getUsers: () => request<User[]>('/users'),
