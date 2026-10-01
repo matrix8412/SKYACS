@@ -29,6 +29,7 @@ const defaultColumns: ColumnConfig[] = [
   { id: 'ppp_username', label: 'PPP Username', visible: false, order: 6 },
   { id: 'status', label: 'Status', visible: true, order: 7 },
   { id: 'last_inform', label: 'Last Inform', visible: true, order: 8 },
+  { id: 'tags', label: 'Tags', visible: true, order: 9 },
 ];
 
 const STORAGE_KEY = 'skyacs_device_columns';
@@ -40,6 +41,19 @@ const TableSkeleton: Component<{ cols: number }> = (props) => (
     </For>
   </tr>
 );
+
+const TagChips: Component<{ tags: string[] }> = (props) => {
+  if (props.tags.length === 0) return <span class="text-muted">—</span>;
+  return (
+    <div class="flex flex-wrap gap-1">
+      <For each={props.tags}>
+        {(tag) => (
+          <span class="inline-flex items-center text-[11px] px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 whitespace-nowrap">{tag}</span>
+        )}
+      </For>
+    </div>
+  );
+};
 
 const Devices: Component = () => {
   const [page, setPage] = createSignal(0);
@@ -212,6 +226,8 @@ const Devices: Component = () => {
         );
       case 'last_inform':
         return <span class="text-muted text-xs">{formatDate(device.last_inform)}</span>;
+      case 'tags':
+        return <TagChips tags={device.tags || []} />;
       default:
         return '-';
     }
@@ -231,6 +247,7 @@ const Devices: Component = () => {
       case 'ppp_username': return getPppUsername(device) === '-' ? '' : getPppUsername(device);
       case 'status': return device.online ? 'Online' : 'Offline';
       case 'last_inform': return device.last_inform || '';
+      case 'tags': return (device.tags || []).join(', ');
       default: return '';
     }
   };
@@ -284,6 +301,10 @@ const Devices: Component = () => {
         case 'last_inform':
           aVal = a.last_inform ? new Date(a.last_inform).getTime() : 0;
           bVal = b.last_inform ? new Date(b.last_inform).getTime() : 0;
+          break;
+        case 'tags':
+          aVal = (a.tags || []).join(', ');
+          bVal = (b.tags || []).join(', ');
           break;
         default:
           return 0;
@@ -432,7 +453,7 @@ const Devices: Component = () => {
               <tr class="border-b border-subtle">
                 <For each={visibleColumns()}>
                   {(col) => {
-                    const isSortable = ['serial_number', 'manufacturer', 'model', 'ip_address', 'status', 'last_inform'].includes(col.id);
+                    const isSortable = ['serial_number', 'manufacturer', 'model', 'ip_address', 'status', 'last_inform', 'tags'].includes(col.id);
                     const currentSort = sortBy();
                     const isSorted = currentSort?.column === col.id;
                     
