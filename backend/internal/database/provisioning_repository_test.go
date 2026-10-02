@@ -102,3 +102,62 @@ func TestListPendingForDeviceTagFilter(t *testing.T) {
 		"Device.WiFi.SSID.3.SSID": true,
 	})
 }
+
+// TestMaxOrder verifies that MaxOrder returns the highest order value for a
+// given phase and 0 when no rules exist for that phase.
+func TestMaxOrder(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	provRepo := NewProvisioningRepository(db)
+
+	// Use a unique phase to avoid interference with other tests.
+	phase := fmt.Sprintf("test-max-order-%d", time.Now().UnixNano())
+
+	// No rules yet: MaxOrder should return 0.
+	max, err := provRepo.MaxOrder(ctx, phase)
+	if err != nil {
+		t.Fatalf("MaxOrder (empty): %v", err)
+	}
+	if max != 0 {
+		t.Fatalf("MaxOrder (empty) = %d, want 0", max)
+	}
+
+	// Create rules with orders 0, 1, 2.
+	ids := make([]int64, 3)
+	for i := 0; i < 3; i++ {
+		rule := &models.ProvisioningRule{
+			ParameterName:  fmt.Sprintf("Test.Param.%d", i),
+			ParameterValue: "val",
+			ParameterType:  "string",
+			Phase:          phase,
+			Enabled:        true,
+			Order:          i,
+		}
+		if err := provRepo.Create(ctx, rule); err != nil {
+			t.Fatalf("create rule %d: %v", i, err)
+		}
+		ids[i] = rule.ID
+	}
+	t.Cleanup(func() {
+		_ = db.Delete(&models.ProvisioningRule{}, ids)
+	})
+
+	max, err = provRepo.MaxOrder(ctx, phase)
+	if err != nil {
+		t.Fatalf("MaxOrder: %v", err)
+	}
+	if max != 2 {
+		t.Fatalf("MaxOrder = %d, want 2", max)
+	}
+
+	// A different phase should still return 0.
+	otherPhase := phase + "-other"
+	max, err = provRepo.MaxOrder(ctx, otherPhase)
+	if err != nil {
+		t.Fatalf("MaxOrder (other phase): %v", err)
+	}
+	if max != 0 {
+		t.Fatalf("MaxOrder (other phase) = %d, want 0", max)
+	}
+}

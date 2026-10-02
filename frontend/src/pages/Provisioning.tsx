@@ -86,6 +86,7 @@ const Provisioning: Component = () => {
     return all.slice(start, start + pageSize());
   });
   const provTotalPages = createMemo(() => Math.ceil(filteredProvRules().length / pageSize()));
+  const provDragEnabled = createMemo(() => Object.keys(columnFilters()).length === 0);
 
   onMount(() => {
     loadProvRules();
@@ -151,7 +152,7 @@ const Provisioning: Component = () => {
     const reordered = [...rules];
     const [moved] = reordered.splice(sourceIdx, 1);
     reordered.splice(targetIdx, 0, moved);
-    setProvRules(reordered);
+    setProvRules(reordered.map((r, i) => ({ ...r, order: i })));
     try {
       await api.reorderProvisioningRules(reordered.map(r => r.id));
       notify({ tone: 'success', title: 'Rules reordered' });
@@ -353,7 +354,7 @@ const Provisioning: Component = () => {
                     {(p, idx) => (
                       <tr
                         class={`border-b border-subtle/50 hover:bg-elevated/40 transition-colors ${provDraggedRow() === p.id ? 'opacity-50' : ''}`}
-                        draggable={true}
+                        draggable={provDragEnabled()}
                         onDragStart={(e) => handleRowDragStart(e, p.id)}
                         onDragOver={handleRowDragOver}
                         onDrop={(e) => handleRowDrop(e, p.id)}
@@ -361,7 +362,7 @@ const Provisioning: Component = () => {
                         <td class="py-2 pr-2 cursor-grab active:cursor-grabbing select-none">
                           <span class="flex items-center gap-1 text-muted">
                             <GripVertical size={12} />
-                            <span class="text-xs">{idx() + 1}</span>
+                            <span class="text-xs">{p.order}</span>
                           </span>
                         </td>
                         <Show when={visibleProvColumns().some(c => c.id === 'parameter')}>

@@ -109,6 +109,18 @@ func (r *ProvisioningRepository) Update(ctx context.Context, rule *models.Provis
 	})
 }
 
+// MaxOrder returns the highest order value for the given phase, or 0 if no rules exist.
+func (r *ProvisioningRepository) MaxOrder(ctx context.Context, phase string) (int, error) {
+	var max int
+	if err := r.db.WithContext(ctx).Model(&models.ProvisioningRule{}).
+		Where("phase = ?", phase).
+		Select("COALESCE(MAX(\"order\"), 0)").
+		Scan(&max).Error; err != nil {
+		return 0, err
+	}
+	return max, nil
+}
+
 func (r *ProvisioningRepository) Reorder(ctx context.Context, orderedIDs []int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, id := range orderedIDs {

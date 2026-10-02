@@ -2271,6 +2271,12 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		body.Phase = "bootstrap"
 	}
 
+	maxOrder, err := r.provisioningRepo.MaxOrder(req.Context(), body.Phase)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to determine next order")
+		return
+	}
+
 	rule := &models.ProvisioningRule{
 		ParameterName:  body.ParameterName,
 		ParameterValue: body.ParameterValue,
@@ -2282,7 +2288,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		Enabled:        body.Enabled,
 		Description:    body.Description,
 		AddObjectPath:  strings.TrimSpace(body.AddObjectPath),
-		Order:          body.Order,
+		Order:          maxOrder + 1,
 		Condition:      strings.TrimSpace(body.Condition),
 	}
 
