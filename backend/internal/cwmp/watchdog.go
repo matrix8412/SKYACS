@@ -148,19 +148,33 @@ func (w *DeviceWatchdog) getStaleOnlineDevices(ctx context.Context) ([]*models.D
 	return devices, err
 }
 
-func (w *DeviceWatchdog) summonDevice(ctx context.Context, device *models.Device, username, password string, useAuto bool) error {
+func (w *DeviceWatchdog) summonDevice(ctx context.Context, device *models.Device, globalUsername, globalPassword string, useAuto bool) error {
 	if device.ConnectionRequestURL == nil || *device.ConnectionRequestURL == "" {
 		return nil
 	}
 
 	connReqURL := *device.ConnectionRequestURL
-	if useAuto {
-		username = device.SerialNumber
+	// Resolve per-device credentials
+	perDeviceMode, perDeviceUsername, perDevicePassword := "", "", ""
+	if device.ConnCredMode != nil {
+		perDeviceMode = *device.ConnCredMode
+	}
+	if device.ConnCredUsername != nil {
+		perDeviceUsername = *device.ConnCredUsername
+	}
+	if device.ConnCredPassword != nil && *device.ConnCredPassword != "" {
 		var err error
-		password, err = netutil.DeriveDevicePassword(device.SerialNumber, password)
+		perDevicePassword, err = database.DecryptValue(*device.ConnCredPassword)
 		if err != nil {
 			return err
 		}
+	}
+	username, password, err := netutil.ResolveConnCredentials(
+		device.SerialNumber, perDeviceMode, perDeviceUsername, perDevicePassword,
+		globalUsername, globalPassword, useAuto,
+	)
+	if err != nil {
+		return err
 	}
 
 	client, err := netutil.NewDeviceHTTPClient(connReqURL, username, password, 10*time.Second)

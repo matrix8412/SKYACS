@@ -79,6 +79,16 @@ func decryptParameterValue(value string) (string, error) {
 	return string(plaintext), nil
 }
 
+// EncryptValue encrypts a sensitive value for at-rest storage.
+func EncryptValue(value string) (string, error) {
+	return encryptParameterValue(value)
+}
+
+// DecryptValue decrypts a previously encrypted value.
+func DecryptValue(value string) (string, error) {
+	return decryptParameterValue(value)
+}
+
 type ParameterRepository struct {
 	db *gorm.DB
 }

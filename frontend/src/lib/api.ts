@@ -11,6 +11,9 @@ export interface Device {
   software_version: string | null;
   ip_address: string | null;
   connection_request_url: string | null;
+  conn_cred_mode: string | null;
+  conn_cred_username: string | null;
+  conn_cred_password: string | null;
   tags: string[] | null;
   last_inform: string | null;
   online: boolean;
@@ -76,6 +79,8 @@ export const api = {
   deleteDevice: (serial: string) => request<{ status: string }>(`/device/${encodeURIComponent(serial)}`, { method: 'DELETE' }),
   connectionRequest: (serial: string) => request<{ status: string; url: string; message: string }>(`/device/${encodeURIComponent(serial)}/connection-request`, { method: 'POST' }),
   downloadFirmware: (serial: string, firmwareId: number, fileType?: string) => request<Task>(`/device/${encodeURIComponent(serial)}/download-firmware`, { method: 'POST', body: JSON.stringify({ firmware_id: firmwareId, file_type: fileType }) }),
+  updateConnCredentials: (serial: string, body: { mode: string; username?: string; password?: string }) => request<{ status: string; mode: string }>(`/device/${encodeURIComponent(serial)}/conn-credentials`, { method: 'PATCH', body: JSON.stringify(body) }),
+  generateConnCredentials: (serial: string) => request<{ status: string; mode: string; username: string; password: string }>(`/device/${encodeURIComponent(serial)}/conn-credentials/generate`, { method: 'POST' }),
 
   getFirmwares: () => request<Firmware[]>('/firmwares'),
   uploadFirmware: (file: File, version: string, manufacturer?: string, productClass?: string, description?: string) => {

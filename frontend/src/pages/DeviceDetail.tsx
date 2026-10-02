@@ -89,6 +89,11 @@ const DeviceDetail: Component = () => {
   const [hostColumnFilters, setHostColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [showHostColumnSettings, setShowHostColumnSettings] = createSignal(false);
   const [hostColumns, setHostColumns] = createSignal<HostColumnConfig[]>([]);
+  const [editingConnCreds, setEditingConnCreds] = createSignal(false);
+  const [connCredMode, setConnCredMode] = createSignal('inherit');
+  const [connCredUsername, setConnCredUsername] = createSignal('');
+  const [connCredPassword, setConnCredPassword] = createSignal('');
+  const [generatedCred, setGeneratedCred] = createSignal<{ username: string; password: string } | null>(null);
 
   onMount(() => {
     const saved = localStorage.getItem(HOST_COLUMNS_STORAGE_KEY);
@@ -485,7 +490,51 @@ const DeviceDetail: Component = () => {
     setActionLoading(null);
   };
 
+  const handleEditConnCreds = () => {
+    const d = device();
+    if (!d) return;
+    setConnCredMode(d.conn_cred_mode || 'inherit');
+    setConnCredUsername(d.conn_cred_username || '');
+    setConnCredPassword('');
+    setEditingConnCreds(true);
+  };
 
+  const handleCancelConnCreds = () => {
+    setEditingConnCreds(false);
+    setConnCredMode('inherit');
+    setConnCredUsername('');
+    setConnCredPassword('');
+  };
+
+  const handleSaveConnCreds = async () => {
+    setActionLoading('conn-creds');
+    try {
+      const body: { mode: string; username?: string; password?: string } = { mode: connCredMode() };
+      if (connCredMode() === 'custom') {
+        body.username = connCredUsername();
+        body.password = connCredPassword();
+      }
+      await api.updateConnCredentials(serial(), body);
+      showMessage('success', 'Connection-request credentials updated.');
+      refetchDevice();
+      handleCancelConnCreds();
+    } catch (err) {
+      showMessage('error', 'Connection-request credentials were not saved.', (err as Error).message);
+    }
+    setActionLoading(null);
+  };
+
+  const handleGenerateConnCreds = async () => {
+    setActionLoading('conn-creds-gen');
+    try {
+      const result = await api.generateConnCredentials(serial());
+      setGeneratedCred({ username: result.username, password: result.password });
+      refetchDevice();
+    } catch (err) {
+      showMessage('error', 'Failed to generate credentials.', (err as Error).message);
+    }
+    setActionLoading(null);
+  };
 
   const refreshAll = () => { refetchDevice(); refetchParams(); refetchTasks(); };
 
@@ -1132,6 +1181,97 @@ const DeviceDetail: Component = () => {
                     <Save size={14} />
                     {actionLoading() === 'modem-creds' ? 'Queuing update…' : 'Queue credential update'}
                   </button>
+                </div>
+              </Show>
+            </div>
+
+            {/* Connection Request Credentials */}
+            <div class="card p-5">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
+                  <Radio size={14} />
+                  Connection-Request Credentials
+                </h2>
+                <div class="flex items-center gap-1">
+                  <Show when={!editingConnCreds() && isFullAccess()}>
+                    <button onClick={handleEditConnCreds} disabled={actionLoading() !== null} class="icon-button" aria-label="Edit connection-request credentials">
+                      <Edit size={14} />
+                    </button>
+                  </Show>
+                  <Show when={isFullAccess()}>
+                    <button onClick={handleGenerateConnCreds} disabled={actionLoading() === 'conn-creds-gen'} class="icon-button" aria-label="Generate per-device credentials">
+                      <Zap size={14} />
+                    </button>
+                  </Show>
+                </div>
+              </div>
+              <Show when={editingConnCreds()} fallback={
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                  <div>
+                    <div class="text-muted text-xs mb-1">Mode</div>
+                    <div class="text-primary font-mono">{device()?.conn_cred_mode || 'inherit'}</div>
+                  </div>
+                  <div>
+                    <div class="text-muted text-xs mb-1">Username</div>
+                    <div class="text-primary font-mono">{device()?.conn_cred_mode === 'custom' ? (device()?.conn_cred_username || '—') : (device()?.conn_cred_mode === 'auto' ? device()?.serial_number : 'global setting')}</div>
+                  </div>
+                  <div>
+                    <div class="text-muted text-xs mb-1">Password</div>
+                    <div class="text-primary font-mono">{device()?.conn_cred_mode === 'custom' ? (device()?.conn_cred_password || '••••••••') : (device()?.conn_cred_mode === 'auto' ? 'derived (HMAC-SHA256)' : 'global setting')}</div>
+                  </div>
+                </div>
+              }>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs text-muted mb-1.5">Credential mode</label>
+                    <div class="flex gap-2">
+                      {(['inherit', 'auto', 'custom'] as const).map((mode) => (
+                        <button
+                          onClick={() => setConnCredMode(mode)}
+                          class={`px-3 py-1.5 text-xs font-medium transition-colors ${connCredMode() === mode ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30' : 'bg-zinc-700 text-secondary border border-zinc-600'}`}
+                          aria-pressed={connCredMode() === mode}
+                        >
+                          {mode === 'inherit' ? 'Inherit (global)' : mode === 'auto' ? 'Auto (derived)' : 'Custom'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <Show when={connCredMode() === 'custom'}>
+                    <div class="grid grid-cols-2 gap-4">
+                      <div>
+                        <label for="conn-cred-username" class="block text-xs text-muted mb-1.5">Username</label>
+                        <input id="conn-cred-username" type="text" value={connCredUsername()} onInput={(e) => setConnCredUsername(e.currentTarget.value)} class="input w-full py-1.5 text-sm font-mono" placeholder="Device serial number" />
+                      </div>
+                      <div>
+                        <label for="conn-cred-password" class="block text-xs text-muted mb-1.5">Password</label>
+                        <input id="conn-cred-password" type="password" value={connCredPassword()} onInput={(e) => setConnCredPassword(e.currentTarget.value)} class="input w-full py-1.5 text-sm font-mono" placeholder="New password" />
+                      </div>
+                    </div>
+                  </Show>
+                  <Show when={connCredMode() === 'auto'}>
+                    <div class="p-3 bg-sky-500/10 border border-sky-500/20 text-xs text-sky-400">
+                      <p><strong>Username:</strong> device serial number</p>
+                      <p><strong>Password:</strong> HMAC-SHA256 derived from global master secret</p>
+                    </div>
+                  </Show>
+                  <div class="flex gap-2 mt-4 justify-end">
+                    <button onClick={handleCancelConnCreds} disabled={actionLoading() !== null} class="btn btn-secondary text-sm py-1.5">
+                      <X size={14} />
+                      Cancel
+                    </button>
+                    <button onClick={handleSaveConnCreds} disabled={actionLoading() === 'conn-creds'} class="btn btn-primary text-sm py-1.5">
+                      <Save size={14} />
+                      {actionLoading() === 'conn-creds' ? 'Saving…' : 'Save credentials'}
+                    </button>
+                  </div>
+                </div>
+              </Show>
+              <Show when={generatedCred()}>
+                <div class="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
+                  <p class="font-medium mb-1">Generated credentials (shown once — store them now):</p>
+                  <p><strong>Username:</strong> <code class="font-mono">{generatedCred()!.username}</code></p>
+                  <p><strong>Password:</strong> <code class="font-mono">{generatedCred()!.password}</code></p>
+                  <button onClick={() => setGeneratedCred(null)} class="mt-2 text-emerald-300 underline">Dismiss</button>
                 </div>
               </Show>
             </div>

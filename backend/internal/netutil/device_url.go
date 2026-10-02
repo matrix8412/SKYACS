@@ -27,6 +27,39 @@ func DeriveDevicePassword(serialNumber, masterSecret string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil)[:18]), nil
 }
 
+// ResolveConnCredentials determines the effective username and password for a
+// connection request based on per-device overrides and global settings.
+//
+// perDeviceMode: "auto", "custom", or "" (inherit global).
+// perDeviceUsername / perDevicePassword: already-decrypted values for "custom" mode.
+// globalUsername / globalPassword: the global settings values.
+// globalAuto: whether the global setting use_auto_conn_credentials is true.
+func ResolveConnCredentials(serial, perDeviceMode, perDeviceUsername, perDevicePassword, globalUsername, globalPassword string, globalAuto bool) (username, password string, err error) {
+	switch perDeviceMode {
+	case "custom":
+		username = perDeviceUsername
+		password = perDevicePassword
+	case "auto":
+		username = serial
+		password, err = DeriveDevicePassword(serial, globalPassword)
+		if err != nil {
+			return "", "", err
+		}
+	default: // "" or "inherit"
+		if globalAuto {
+			username = serial
+			password, err = DeriveDevicePassword(serial, globalPassword)
+			if err != nil {
+				return "", "", err
+			}
+		} else {
+			username = globalUsername
+			password = globalPassword
+		}
+	}
+	return username, password, nil
+}
+
 // NewDeviceHTTPClient returns a redirect-safe client whose transport connects
 // only to the IP addresses resolved and validated here. This closes the DNS
 // rebinding window between URL validation and the actual socket connection.

@@ -125,6 +125,25 @@ func (r *DeviceRepository) SetTags(ctx context.Context, deviceID int64, tags []s
 	return r.db.WithContext(ctx).Model(device).Select("tags").Updates(device).Error
 }
 
+// SetConnCredentials updates the per-device connection-request credential fields.
+// password is plaintext; it is encrypted before storage. An empty password clears the field.
+func (r *DeviceRepository) SetConnCredentials(ctx context.Context, deviceID int64, mode, username, password string) error {
+	updates := map[string]interface{}{
+		"conn_cred_mode":     mode,
+		"conn_cred_username": username,
+	}
+	if password != "" {
+		enc, err := encryptParameterValue(password)
+		if err != nil {
+			return err
+		}
+		updates["conn_cred_password"] = enc
+	} else {
+		updates["conn_cred_password"] = nil
+	}
+	return r.db.WithContext(ctx).Model(&models.Device{}).Where("id = ?", deviceID).Updates(updates).Error
+}
+
 func (r *DeviceRepository) SetOffline(ctx context.Context, serialNumber string) error {
 	return r.db.WithContext(ctx).Model(&models.Device{}).
 		Where("serial_number = ?", serialNumber).

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -141,6 +142,8 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("POST /device/{serial}/factory-reset", auth.RequireFullAccess(r.handleFactoryResetBySerial))
 	apiMux.HandleFunc("POST /device/{serial}/connection-request", auth.RequireFullAccess(r.handleConnectionRequestBySerial))
 	apiMux.HandleFunc("POST /device/{serial}/download-firmware", auth.RequireFullAccess(r.handleDownloadFirmwareBySerial))
+	apiMux.HandleFunc("PATCH /device/{serial}/conn-credentials", auth.RequireFullAccess(r.handleUpdateDeviceConnCredentials))
+	apiMux.HandleFunc("POST /device/{serial}/conn-credentials/generate", auth.RequireFullAccess(r.handleGenerateDeviceConnCredentials))
 
 	// Firmware endpoints
 	apiMux.HandleFunc("GET /firmwares", r.handleListFirmwares)
@@ -262,6 +265,7 @@ func (r *Router) handleGetDevice(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	maskDeviceSecrets(device)
 	respondJSON(w, http.StatusOK, device)
 }
 
@@ -752,24 +756,39 @@ func (r *Router) executeConnectionRequest(w http.ResponseWriter, req *http.Reque
 		respondError(w, http.StatusInternalServerError, "Failed to load connection request settings")
 		return
 	}
-	username, password, useAuto := "", "", false
+	globalUsername, globalPassword, useAuto := "", "", false
 	for _, setting := range settings {
 		switch setting.Key {
 		case "connection_request_username":
-			username = setting.Value
+			globalUsername = setting.Value
 		case "connection_request_password":
-			password = setting.Value
+			globalPassword = setting.Value
 		case "use_auto_conn_credentials":
 			useAuto = setting.Value == "true"
 		}
 	}
-	if useAuto {
-		username = device.SerialNumber
-		password, err = netutil.DeriveDevicePassword(device.SerialNumber, password)
+	// Resolve per-device credentials
+	perDeviceMode, perDeviceUsername, perDevicePassword := "", "", ""
+	if device.ConnCredMode != nil {
+		perDeviceMode = *device.ConnCredMode
+	}
+	if device.ConnCredUsername != nil {
+		perDeviceUsername = *device.ConnCredUsername
+	}
+	if device.ConnCredPassword != nil && *device.ConnCredPassword != "" {
+		perDevicePassword, err = database.DecryptValue(*device.ConnCredPassword)
 		if err != nil {
-			respondError(w, http.StatusBadRequest, err.Error())
+			respondError(w, http.StatusInternalServerError, "Failed to decrypt device credentials")
 			return
 		}
+	}
+	username, password, err := netutil.ResolveConnCredentials(
+		device.SerialNumber, perDeviceMode, perDeviceUsername, perDevicePassword,
+		globalUsername, globalPassword, useAuto,
+	)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	client, err := netutil.NewDeviceHTTPClient(connReqURL, username, password, 10*time.Second)
@@ -919,6 +938,13 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 
 func isSecretSetting(key string) bool {
 	return key == "connection_request_password"
+}
+
+func maskDeviceSecrets(device *models.Device) {
+	if device.ConnCredPassword != nil && *device.ConnCredPassword != "" {
+		masked := "••••••••"
+		device.ConnCredPassword = &masked
+	}
 }
 
 func (r *Router) handleListFirmwares(w http.ResponseWriter, req *http.Request) {
@@ -1316,6 +1342,7 @@ func (r *Router) handleGetDeviceBySerial(w http.ResponseWriter, req *http.Reques
 		respondError(w, http.StatusNotFound, "Device not found")
 		return
 	}
+	maskDeviceSecrets(device)
 	respondJSON(w, http.StatusOK, device)
 }
 
@@ -1613,6 +1640,93 @@ func (r *Router) handleDownloadFirmwareBySerial(w http.ResponseWriter, req *http
 		return
 	}
 	respondJSON(w, http.StatusCreated, task)
+}
+
+func (r *Router) handleUpdateDeviceConnCredentials(w http.ResponseWriter, req *http.Request) {
+	device, err := r.parseDeviceBySerial(req)
+	if err != nil || device == nil {
+		respondError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+
+	var body struct {
+		Mode     string `json:"mode"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// Validate mode
+	switch body.Mode {
+	case "auto", "custom", "inherit":
+	default:
+		respondError(w, http.StatusBadRequest, "mode must be 'auto', 'custom', or 'inherit'")
+		return
+	}
+
+	// Validate custom mode requires credentials
+	if body.Mode == "custom" {
+		if body.Username == "" || body.Password == "" {
+			respondError(w, http.StatusBadRequest, "custom mode requires both username and password")
+			return
+		}
+	}
+
+	// Validate auto mode requires a valid global master secret
+	if body.Mode == "auto" {
+		current, err := r.settingsRepo.Get(req.Context(), "connection_request_password")
+		if err != nil || current == nil || len(current.Value) < 16 {
+			respondError(w, http.StatusBadRequest, "auto mode requires a global master secret of at least 16 characters")
+			return
+		}
+	}
+
+	// For "inherit" mode, clear per-device fields
+	username, password := "", ""
+	if body.Mode == "custom" {
+		username = body.Username
+		password = body.Password
+	}
+
+	if err := r.deviceRepo.SetConnCredentials(req.Context(), device.ID, body.Mode, username, password); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update connection credentials")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"status": "updated", "mode": body.Mode})
+}
+
+func (r *Router) handleGenerateDeviceConnCredentials(w http.ResponseWriter, req *http.Request) {
+	device, err := r.parseDeviceBySerial(req)
+	if err != nil || device == nil {
+		respondError(w, http.StatusNotFound, "Device not found")
+		return
+	}
+
+	// Generate a random 24-character password
+	buf := make([]byte, 18)
+	if _, err := rand.Read(buf); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to generate password")
+		return
+	}
+	generatedPassword := base64.RawURLEncoding.EncodeToString(buf)
+
+	if err := r.deviceRepo.SetConnCredentials(req.Context(), device.ID, "custom", device.SerialNumber, generatedPassword); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to generate connection credentials")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status":   "generated",
+		"mode":     "custom",
+		"username": device.SerialNumber,
+		"password": generatedPassword,
+	})
 }
 
 func validateFirmwareCompatibility(device *models.Device, firmware *models.Firmware) error {

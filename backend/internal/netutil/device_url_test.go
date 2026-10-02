@@ -36,3 +36,76 @@ func TestDeviceHTTPClientHonorsDestinationAllowlist(t *testing.T) {
 		t.Fatalf("allowlisted destination rejected: %v", err)
 	}
 }
+
+func TestResolveConnCredentialsInheritGlobalCustom(t *testing.T) {
+	username, password, err := ResolveConnCredentials("SN-1", "", "", "", "globalUser", "globalPass", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if username != "globalUser" || password != "globalPass" {
+		t.Fatalf("expected global credentials, got %q/%q", username, password)
+	}
+}
+
+func TestResolveConnCredentialsInheritGlobalAuto(t *testing.T) {
+	secret := "0123456789abcdef0123456789abcdef"
+	expected, _ := DeriveDevicePassword("SN-1", secret)
+	username, password, err := ResolveConnCredentials("SN-1", "", "", "", "globalUser", secret, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if username != "SN-1" || password != expected {
+		t.Fatalf("expected derived credentials, got %q/%q", username, password)
+	}
+}
+
+func TestResolveConnCredentialsPerDeviceAuto(t *testing.T) {
+	secret := "0123456789abcdef0123456789abcdef"
+	expected, _ := DeriveDevicePassword("SN-2", secret)
+	username, password, err := ResolveConnCredentials("SN-2", "auto", "", "", "globalUser", secret, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if username != "SN-2" || password != expected {
+		t.Fatalf("expected per-device auto credentials, got %q/%q", username, password)
+	}
+}
+
+func TestResolveConnCredentialsPerDeviceCustom(t *testing.T) {
+	username, password, err := ResolveConnCredentials("SN-3", "custom", "devUser", "devPass", "globalUser", "globalPass", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if username != "devUser" || password != "devPass" {
+		t.Fatalf("expected custom credentials, got %q/%q", username, password)
+	}
+}
+
+func TestResolveConnCredentialsPerDeviceAutoOverridesGlobalCustom(t *testing.T) {
+	secret := "0123456789abcdef0123456789abcdef"
+	expected, _ := DeriveDevicePassword("SN-4", secret)
+	// Per-device "auto" should override global custom mode
+	username, password, err := ResolveConnCredentials("SN-4", "auto", "", "", "globalUser", secret, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if username != "SN-4" || password != expected {
+		t.Fatalf("expected per-device auto to override global, got %q/%q", username, password)
+	}
+}
+
+func TestResolveConnCredentialsInheritExplicit(t *testing.T) {
+	username, password, err := ResolveConnCredentials("SN-5", "inherit", "", "", "globalUser", "globalPass", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if username != "globalUser" || password != "globalPass" {
+		t.Fatalf("expected global credentials for inherit mode, got %q/%q", username, password)
+	}
+}
+
+func TestResolveConnCredentialsAutoRequiresValidSecret(t *testing.T) {
+	if _, _, err := ResolveConnCredentials("SN-6", "auto", "", "", "", "weak", false); err == nil {
+		t.Fatal("expected error for weak master secret in auto mode")
+	}
+}
