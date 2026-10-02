@@ -7,6 +7,7 @@ export interface WanProfile {
   path: string;
   name: string;
   status: string;
+  enable: string;
   vlan: string;
   username: string;
   password: string;
@@ -74,6 +75,7 @@ export function getWanProfiles(parameters: WanParameter[]): WanProfile[] {
       path,
       name: ownValue('Name') !== '-' ? ownValue('Name') : `WANDevice.${group.wanDevice} / WANConnectionDevice.${group.connectionDevice} / ${group.kind}.${group.instance}`,
       status: ownValue('ConnectionStatus'),
+      enable: (() => { const v = ownValue('Enable'); return v === '-' ? '-' : enabled(v) ? 'Enabled' : 'Disabled'; })(),
       vlan: firstValue('X_HW_VLAN', 'VLANID', 'VLANIDMark', 'X_CT_VLAN', 'WANEponLinkConfig.VLANIDMark'),
       username: ownValue('Username'),
       password: ownValue('Password'),

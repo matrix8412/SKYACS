@@ -16,8 +16,20 @@ test('discovers WANConnectionDevice.2.WANIPConnection.1 independently of child i
   assert.equal(profiles[0].name, 'Existing WAN');
   assert.equal(profiles[1].path, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.');
   assert.equal(profiles[1].status, '-');
+  assert.equal(profiles[1].enable, 'Disabled');
+  assert.equal(profiles[0].enable, '-');
   assert.equal(profiles[1].type, 'Unconfigured');
   assert.equal(profiles[1].ipAddress, '-');
+});
+
+test('shows Enable as Enabled when value is 1', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Enable', value: '1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].enable, 'Enabled');
 });
 
 test('keeps multiple and sparse WAN instances separate', () => {

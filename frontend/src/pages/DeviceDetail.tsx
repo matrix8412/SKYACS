@@ -1312,11 +1312,12 @@ const DeviceDetail: Component = () => {
                 <p class="text-muted text-sm">No WAN configuration data. Click Summon to fetch.</p>
               }>
                 <div class="overflow-x-auto">
-                  <table class="data-table w-full text-sm min-w-[1180px]">
+                  <table class="data-table w-full text-sm min-w-[1260px]">
                     <thead class="sticky top-0 bg-base z-10">
                       <tr class="border-b-2 border-subtle bg-base">
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Name</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Status</th>
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary">Enable</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Uptime</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Type</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">VLAN</th>
@@ -1345,6 +1346,9 @@ const DeviceDetail: Component = () => {
                             </td>
                             <td class="px-3 py-2.5">
                               <span class={`badge ${wan.status === 'Connected' ? 'badge-success' : wan.status === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.status}</span>
+                            </td>
+                            <td class="px-3 py-2.5">
+                              <span class={`badge ${wan.enable === 'Enabled' ? 'badge-success' : wan.enable === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.enable}</span>
                             </td>
                             <td class="px-3 py-2.5 text-secondary">{formatUptime(wan.uptime)}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.type}</td>
