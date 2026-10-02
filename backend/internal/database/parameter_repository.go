@@ -98,6 +98,10 @@ func NewParameterRepository(db *gorm.DB) *ParameterRepository {
 }
 
 func (r *ParameterRepository) UpsertMany(ctx context.Context, deviceID int64, params []models.DeviceParameter) error {
+	return upsertMany(r.db.WithContext(ctx), deviceID, params)
+}
+
+func upsertMany(db *gorm.DB, deviceID int64, params []models.DeviceParameter) error {
 	if len(params) == 0 {
 		return nil
 	}
@@ -114,10 +118,26 @@ func (r *ParameterRepository) UpsertMany(ctx context.Context, deviceID int64, pa
 			params[index].Value = value
 		}
 	}
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "device_id"}, {Name: "name"}},
 		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
 	}).CreateInBatches(&params, 500).Error
+}
+
+// SaveInformParameters atomically upserts the Inform's parameters and purges
+// parameters whose owning object is no longer present. Running both in a single
+// transaction prevents a concurrent read from observing a half-applied state
+// (e.g. the upsert committed but the stale purge not yet, or vice versa).
+func (r *ParameterRepository) SaveInformParameters(ctx context.Context, deviceID int64, params []models.DeviceParameter, currentNames []string) error {
+	if len(params) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := upsertMany(tx, deviceID, params); err != nil {
+			return err
+		}
+		return deleteStale(tx, deviceID, currentNames)
+	})
 }
 
 func (r *ParameterRepository) UpsertWritable(ctx context.Context, deviceID int64, params []models.DeviceParameter) error {
@@ -140,17 +160,39 @@ func (r *ParameterRepository) UpsertWritable(ctx context.Context, deviceID int64
 	}).CreateInBatches(&entries, 500).Error
 }
 
-// DeleteStale removes parameters for a device that are no longer present in
-// the current Inform. This handles the case where a WAN connection (or other
-// object) is deleted on the CPE: its parameters stop appearing in subsequent
-// Inform messages, and the stale rows must be purged.
+// DeleteStale removes parameters for a device whose owning object is no longer
+// present in the current Inform. The purge is object-scoped rather than
+// name-scoped: a parameter group (e.g. a WAN connection) is only deleted when
+// NO parameter of that object appears in the Inform. This prevents a partial
+// Inform — which may omit some leaf parameters of a still-present object —
+// from wiping still-valid rows, while still purging objects genuinely removed
+// on the CPE.
 func (r *ParameterRepository) DeleteStale(ctx context.Context, deviceID int64, currentNames []string) error {
+	return deleteStale(r.db.WithContext(ctx), deviceID, currentNames)
+}
+
+func deleteStale(db *gorm.DB, deviceID int64, currentNames []string) error {
 	if len(currentNames) == 0 {
 		return nil
 	}
-	return r.db.WithContext(ctx).
-		Where("device_id = ? AND name NOT IN ?", deviceID, currentNames).
+	currentObjects := make([]string, 0, len(currentNames))
+	for _, name := range currentNames {
+		currentObjects = append(currentObjects, objectPrefix(name))
+	}
+	return db.
+		Where("device_id = ? AND LEFT(name, LENGTH(name) - POSITION('.' IN REVERSE(name))) NOT IN ?", deviceID, currentObjects).
 		Delete(&models.DeviceParameter{}).Error
+}
+
+// objectPrefix returns the owning object path of a parameter name, i.e. the
+// name with its final leaf segment removed. "a.b.c" -> "a.b". Names without a
+// dot are returned unchanged.
+func objectPrefix(name string) string {
+	idx := strings.LastIndex(name, ".")
+	if idx <= 0 {
+		return name
+	}
+	return name[:idx]
 }
 
 func (r *ParameterRepository) GetByDeviceID(ctx context.Context, deviceID int64) ([]models.DeviceParameter, error) {

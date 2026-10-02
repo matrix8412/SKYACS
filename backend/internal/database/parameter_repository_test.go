@@ -157,6 +157,68 @@ func TestDeleteStaleRemovesMissingParameters(t *testing.T) {
 	}
 }
 
+func TestDeleteStaleKeepsPartialInformObject(t *testing.T) {
+	db := openTestDB(t)
+	if err := db.AutoMigrate(&models.Device{}, &models.DeviceParameter{}); err != nil {
+		t.Fatalf("auto-migrate: %v", err)
+	}
+	ctx := context.Background()
+
+	serial := fmt.Sprintf("test-partial-%d", time.Now().UnixNano())
+	device := &models.Device{SerialNumber: serial, OUI: "00:00:03"}
+	if err := db.Create(device).Error; err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Where("device_id = ?", device.ID).Delete(&models.DeviceParameter{})
+		_ = db.Delete(&models.Device{}, device.ID)
+	})
+
+	repo := NewParameterRepository(db)
+
+	// A WAN connection with several leaf parameters.
+	const obj = "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1"
+	initialParams := []models.DeviceParameter{
+		{DeviceID: device.ID, Name: obj + ".Name", Value: "WAN1"},
+		{DeviceID: device.ID, Name: obj + ".Enable", Value: "1"},
+		{DeviceID: device.ID, Name: obj + ".ConnectionStatus", Value: "Connected"},
+		{DeviceID: device.ID, Name: obj + ".ExternalIPAddress", Value: "10.160.60.4"},
+	}
+	if err := repo.UpsertMany(ctx, device.ID, initialParams); err != nil {
+		t.Fatalf("UpsertMany: %v", err)
+	}
+
+	// A partial Inform that reports only Name and ExternalIPAddress, omitting
+	// Enable and ConnectionStatus. The object is still present, so none of its
+	// parameters may be purged.
+	currentNames := []string{
+		obj + ".Name",
+		obj + ".ExternalIPAddress",
+	}
+	if err := repo.DeleteStale(ctx, device.ID, currentNames); err != nil {
+		t.Fatalf("DeleteStale: %v", err)
+	}
+
+	remaining, err := repo.GetByDeviceID(ctx, device.ID)
+	if err != nil {
+		t.Fatalf("GetByDeviceID after delete: %v", err)
+	}
+	if len(remaining) != 4 {
+		t.Fatalf("expected 4 params after partial Inform, got %d", len(remaining))
+	}
+	for _, name := range []string{".Enable", ".ConnectionStatus"} {
+		found := false
+		for _, p := range remaining {
+			if p.Name == obj+name {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("partial Inform wiped still-present parameter %s", obj+name)
+		}
+	}
+}
+
 func TestDeleteStaleEmptyListIsNoop(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.AutoMigrate(&models.Device{}, &models.DeviceParameter{}); err != nil {

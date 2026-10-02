@@ -282,11 +282,9 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 				})
 				currentNames = append(currentNames, parameter.Name)
 			}
-			if err := h.parameterRepo.UpsertMany(ctx, deviceID, paramsToSave); err != nil {
+			log.Printf("Inform from %s carries %d parameters", inform.DeviceId.SerialNumber, len(inform.ParameterList.Parameters))
+			if err := h.parameterRepo.SaveInformParameters(ctx, deviceID, paramsToSave, currentNames); err != nil {
 				log.Printf("Error saving Inform parameters: %v", err)
-			}
-			if err := h.parameterRepo.DeleteStale(ctx, deviceID, currentNames); err != nil {
-				log.Printf("Error deleting stale Inform parameters: %v", err)
 			}
 		}
 
