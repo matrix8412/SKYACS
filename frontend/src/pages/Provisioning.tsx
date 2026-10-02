@@ -351,7 +351,7 @@ const Provisioning: Component = () => {
                 </thead>
                 <tbody>
                   <For each={pagedProvRules()}>
-                    {(p, idx) => (
+                    {(p) => (
                       <tr
                         class={`border-b border-subtle/50 hover:bg-elevated/40 transition-colors ${provDraggedRow() === p.id ? 'opacity-50' : ''}`}
                         draggable={provDragEnabled()}
