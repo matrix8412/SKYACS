@@ -804,19 +804,19 @@ func (r *Router) executeConnectionRequest(w http.ResponseWriter, req *http.Reque
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		log.Printf("[ConnReq] %s failed: %v", device.SerialNumber, err)
-		respondJSON(w, http.StatusOK, map[string]string{"status": "failed", "url": connReqURL, "message": "Device tidak dapat dijangkau: " + err.Error()})
+		respondJSON(w, http.StatusOK, map[string]string{"status": "failed", "url": connReqURL, "message": "Device unreachable: " + err.Error()})
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		respondJSON(w, http.StatusOK, map[string]string{"status": "success", "url": connReqURL, "message": "Device akan mengirim Inform dalam beberapa detik"})
+		respondJSON(w, http.StatusOK, map[string]string{"status": "success", "url": connReqURL, "message": "Device will send Inform in a few seconds"})
 		return
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		respondJSON(w, http.StatusOK, map[string]string{"status": "auth_failed", "url": connReqURL, "message": "Connection request credentials were rejected by the device"})
 		return
 	}
-	respondJSON(w, http.StatusOK, map[string]string{"status": "unknown", "url": connReqURL, "message": "Device merespons dengan status " + resp.Status})
+	respondJSON(w, http.StatusOK, map[string]string{"status": "unknown", "url": connReqURL, "message": "Device responded with status " + resp.Status})
 }
 
 func (r *Router) handleGetSettings(w http.ResponseWriter, req *http.Request) {

@@ -217,5 +217,5 @@ type SummonError struct {
 }
 
 func (e *SummonError) Error() string {
-	return "Device merespons dengan status " + e.Status
+	return "Device responded with status " + e.Status
 }
