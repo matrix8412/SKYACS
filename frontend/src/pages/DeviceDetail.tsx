@@ -37,7 +37,7 @@ const DeviceDetail: Component = () => {
   const params = useParams<{ serial: string }>();
   const navigate = useNavigate();
   const { isFullAccess } = useAuth();
-  const { confirm } = useFeedback();
+  const { confirm, notify } = useFeedback();
   const serial = () => params.serial || '';
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = () => searchParams.tab === 'metrics' || searchParams.tab === 'tasks' || searchParams.tab === 'credentials' || searchParams.tab === 'hosts' || searchParams.tab === 'faults' ? searchParams.tab : 'overview';
@@ -45,7 +45,7 @@ const DeviceDetail: Component = () => {
   const [device, { refetch: refetchDevice }] = createResource(serial, api.getDevice);
   const [parameters, { refetch: refetchParams }] = createResource(serial, api.getDeviceParameters);
   const [tasks, { refetch: refetchTasks }] = createResource(serial, api.getDeviceTasks);
-  const [deviceFaults] = createResource(serial, api.getDeviceFaults);
+  const [deviceFaults, { refetch: refetchDeviceFaults }] = createResource(serial, api.getDeviceFaults);
   const [metricDefs] = createResource(api.getMetricDefinitions);
   const [taskPage, setTaskPage] = createSignal(0);
   const { pageSize: taskPageSize, changePageSize: changeTaskPageSize } = usePageSize('device_tasks', 10);
@@ -66,6 +66,30 @@ const DeviceDetail: Component = () => {
   });
   const deviceFaultTotalPages = createMemo(() => Math.ceil((deviceFaults()?.length || 0) / faultPageSize()));
   const unresolvedFaultCount = createMemo(() => (deviceFaults() || []).filter(f => !f.resolved).length);
+  const [pendingFault, setPendingFault] = createSignal<number | null>(null);
+
+  const handleResolveFault = async (id: number) => {
+    setPendingFault(id);
+    try {
+      await api.resolveFault(id);
+      notify({ tone: 'success', title: 'Fault marked as resolved' });
+      await refetchDeviceFaults();
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not resolve fault', detail: (error as Error).message, persistent: true });
+    } finally { setPendingFault(null); }
+  };
+
+  const handleDeleteFault = async (id: number) => {
+    if (!await confirm({ title: 'Delete fault record?', description: 'This permanently removes the selected protocol fault from the operational history. This action cannot be undone.', confirmLabel: 'Delete fault', tone: 'danger' })) return;
+    setPendingFault(id);
+    try {
+      await api.deleteFault(id);
+      notify({ tone: 'success', title: 'Fault record deleted' });
+      await refetchDeviceFaults();
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not delete fault', detail: (error as Error).message, persistent: true });
+    } finally { setPendingFault(null); }
+  };
 
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [message, setMessage] = createSignal<{ type: 'success' | 'error'; text: string; detail?: string } | null>(null);
@@ -1745,6 +1769,7 @@ const DeviceDetail: Component = () => {
                           <th class="text-left px-4 py-2 text-xs font-medium text-muted">Parameter</th>
                           <th class="text-left px-4 py-2 text-xs font-medium text-muted">Time</th>
                           <th class="text-left px-4 py-2 text-xs font-medium text-muted">Status</th>
+                          <th class="text-right px-4 py-2 text-xs font-medium text-muted">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1767,6 +1792,30 @@ const DeviceDetail: Component = () => {
                                 <span class={`badge ${fault.resolved ? 'badge-success' : 'badge-error'}`}>
                                   {fault.resolved ? 'Resolved' : 'Active'}
                                 </span>
+                              </td>
+                              <td class="px-4 py-2 text-right">
+                                <div class="flex items-center justify-end gap-2">
+                                  <Show when={!fault.resolved && isFullAccess()}>
+                                    <button
+                                      onClick={() => handleResolveFault(fault.id)}
+                                      class="icon-button hover:text-emerald-400"
+                                      aria-label={`Mark fault ${fault.fault_code} as resolved`}
+                                      disabled={pendingFault() === fault.id}
+                                    >
+                                      <Check size={14} />
+                                    </button>
+                                  </Show>
+                                  <Show when={isFullAccess()}>
+                                    <button
+                                      onClick={() => handleDeleteFault(fault.id)}
+                                      class="icon-button hover:text-rose-400"
+                                      aria-label={`Delete fault ${fault.fault_code}`}
+                                      disabled={pendingFault() === fault.id}
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </Show>
+                                </div>
                               </td>
                             </tr>
                           )}
