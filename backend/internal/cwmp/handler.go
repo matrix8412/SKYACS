@@ -322,9 +322,10 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 			allRules = append(allRules, defaultRules...)
 		}
 
-		// Bootstrap phase rules only apply on the BOOTSTRAP event
+		// Bootstrap phase rules: on BOOTSTRAP event the CPE is in factory state,
+		// so always re-apply regardless of prior application records.
 		if hasBootstrap {
-			bootstrapRules, err := h.provisioningRepo.ListPendingForDevice(ctx, deviceID, inform.DeviceId.Manufacturer, inform.DeviceId.ProductClass, "bootstrap")
+			bootstrapRules, err := h.provisioningRepo.ListForDevice(ctx, deviceID, inform.DeviceId.Manufacturer, inform.DeviceId.ProductClass, "bootstrap")
 			if err == nil {
 				allRules = append(allRules, bootstrapRules...)
 			}

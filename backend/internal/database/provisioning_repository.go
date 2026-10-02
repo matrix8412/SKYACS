@@ -60,6 +60,24 @@ func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, devic
 	return rules, decryptProvisioningRules(rules)
 }
 
+// ListForDevice returns all enabled rules matching the device without
+// filtering by provisioning_applications. Use this when the CPE explicitly
+// signals a factory-state event (e.g. 0 BOOTSTRAP) and must be re-provisioned
+// regardless of prior application records.
+func (r *ProvisioningRepository) ListForDevice(ctx context.Context, deviceID int64, manufacturer, productClass, phase string) ([]*models.ProvisioningRule, error) {
+	var rules []*models.ProvisioningRule
+	if err := r.db.WithContext(ctx).
+		Where("enabled = ?", true).
+		Where("phase = ?", phase).
+		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
+		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
+		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
+		Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
+		return nil, err
+	}
+	return rules, decryptProvisioningRules(rules)
+}
+
 func (r *ProvisioningRepository) MarkApplied(ctx context.Context, deviceID int64, applications []models.ProvisioningApplication) error {
 	for index := range applications {
 		applications[index].DeviceID = deviceID
