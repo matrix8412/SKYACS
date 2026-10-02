@@ -70,6 +70,16 @@ const computeUnitScale = (values: number[], mode: string): UnitScale => {
   return { divisor: 1, suffix: '' };
 };
 
+const effectiveUnit = (unit: string, scaleMode: string, suffix: string): string => {
+  if (scaleMode === 'bytes' || scaleMode === 'bits') {
+    return suffix || unit;
+  }
+  if (scaleMode === 'auto') {
+    return suffix ? suffix + unit : unit;
+  }
+  return unit;
+};
+
 const MetricChart: Component<MetricChartProps> = (props) => {
   const [bucket, setBucket] = createSignal(getStoredBucket(props.serial));
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
@@ -156,14 +166,24 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     }
 
     const metrics = props.metrics;
+    const axisUnitLabel = (side: 'left' | 'right'): string => {
+      const units: string[] = [];
+      for (let i = 0; i < metrics.length; i++) {
+        const isRight = metrics[i].axis === 'right';
+        if (side === 'right' ? !isRight : isRight) continue;
+        const u = effectiveUnit(metrics[i].unit, metrics[i].unit_scale, s.suffixes[i]);
+        if (u && !units.includes(u)) units.push(u);
+      }
+      return units.join(' / ');
+    };
     const specs: uPlot.Series[] = [{ label: 'Time' }];
 
     for (let i = 0; i < metrics.length; i++) {
       const m = metrics[i];
       const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
       const scale = m.axis === 'right' ? 'y2' : 'y';
-      const suffix = s.suffixes[i] ? ` ${s.suffixes[i]}` : '';
-      const label = m.name + (m.unit ? ` (${m.unit}${suffix})` : suffix ? ` (${suffix})` : '');
+      const unit = effectiveUnit(m.unit, m.unit_scale, s.suffixes[i]);
+      const label = m.name + (unit ? ` (${unit})` : '');
 
       specs.push({
         label,
@@ -196,7 +216,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
         stroke: '#475569',
         grid: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
         ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-        label: '',
+        label: axisUnitLabel('left'),
         font: '11px "IBM Plex Mono", monospace',
         space: 40,
       },
@@ -207,7 +227,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
         stroke: '#475569',
         grid: { show: false },
         ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-        label: '',
+        label: axisUnitLabel('right'),
         font: '11px "IBM Plex Mono", monospace',
         space: 40,
         side: 1,
@@ -245,8 +265,8 @@ const MetricChart: Component<MetricChartProps> = (props) => {
             const val = self.data[valIdx]?.[idx];
             if (val == null) continue;
             hasVal = true;
-            const suffix = s.suffixes[i] ? ` ${s.suffixes[i]}` : '';
-            const unit = m.unit ? ` ${m.unit}${suffix}` : suffix;
+            const effUnit = effectiveUnit(m.unit, m.unit_scale, s.suffixes[i]);
+            const unit = effUnit ? ` ${effUnit}` : '';
             html += `<div style="display:flex;align-items:center;gap:4px;margin-top:2px;"><span style="width:8px;height:8px;border-radius:2px;background:${color};display:inline-block;"></span><span>${m.name}: ${typeof val === 'number' ? val.toFixed(2) : val}${unit}</span></div>`;
           }
           if (!hasVal) { tooltipEl.style.display = 'none'; return; }
