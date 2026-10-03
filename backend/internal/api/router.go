@@ -1450,6 +1450,31 @@ func (r *Router) handleSetDeviceTagsBySerial(w http.ResponseWriter, req *http.Re
 	respondJSON(w, http.StatusOK, map[string]interface{}{"status": "updated", "tags": tags})
 }
 
+// normalizeProductClasses trims, lowercases, de-duplicates and drops empty
+// product-class entries so that SQL jsonb matching is case-insensitive and stable.
+func normalizeProductClasses(pcs []string) []string {
+	if len(pcs) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(pcs))
+	result := make([]string, 0, len(pcs))
+	for _, pc := range pcs {
+		pc = strings.ToLower(strings.TrimSpace(pc))
+		if pc == "" {
+			continue
+		}
+		if _, ok := seen[pc]; ok {
+			continue
+		}
+		seen[pc] = struct{}{}
+		result = append(result, pc)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 // normalizeTags trims, lowercases, de-duplicates and drops empty tags so that
 // tag matching is case-insensitive and stable.
 func normalizeTags(tags []string) []string {
@@ -2242,7 +2267,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.ProductClasses, body.Tag, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2284,6 +2309,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		Phase:          body.Phase,
 		Manufacturer:   strings.TrimSpace(body.Manufacturer),
 		ProductClass:   strings.TrimSpace(body.ProductClass),
+		ProductClasses: normalizeProductClasses(body.ProductClasses),
 		Tag:            strings.ToLower(strings.TrimSpace(body.Tag)),
 		Enabled:        body.Enabled,
 		Description:    body.Description,
@@ -2321,7 +2347,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.Tag, body.Description); err != nil {
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.ProductClasses, body.Tag, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2346,6 +2372,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 	body.ID = id
 	body.Tag = strings.ToLower(strings.TrimSpace(body.Tag))
 	body.Condition = strings.TrimSpace(body.Condition)
+	body.ProductClasses = normalizeProductClasses(body.ProductClasses)
 	if err := r.provisioningRepo.Update(req.Context(), &body); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to update rule")
 		return
@@ -2354,7 +2381,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 	respondJSON(w, http.StatusOK, body)
 }
 
-func validateProvisioningRule(name, value, valueType, addObjectPath, phase, manufacturer, productClass, tag, description string) error {
+func validateProvisioningRule(name, value, valueType, addObjectPath, phase, manufacturer, productClass string, productClasses []string, tag, description string) error {
 	if strings.TrimSpace(addObjectPath) == "" {
 		if err := validateParameterNames([]string{name}); err != nil {
 			return err
@@ -2375,6 +2402,14 @@ func validateProvisioningRule(name, value, valueType, addObjectPath, phase, manu
 	}
 	if len(manufacturer) > 128 || len(productClass) > 128 || len(tag) > 128 {
 		return errors.New("provisioning scope exceeds 128 characters")
+	}
+	if len(productClasses) > 32 {
+		return errors.New("a rule can target at most 32 product classes")
+	}
+	for _, pc := range productClasses {
+		if len(pc) > 128 {
+			return errors.New("product class entry exceeds 128 characters")
+		}
 	}
 	if len(description) > 2048 || strings.ContainsRune(description, '\x00') {
 		return errors.New("provisioning description is invalid or exceeds 2048 characters")

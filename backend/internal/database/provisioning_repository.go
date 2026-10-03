@@ -51,7 +51,7 @@ func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, devic
 		Where("enabled = ?", true).
 		Where("phase = ?", phase).
 		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
-		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
+		Where("(product_classes IS NULL OR jsonb_array_length(product_classes) = 0 OR product_classes @> to_jsonb(LOWER(?)))", productClass).
 		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
 		Where("NOT EXISTS (SELECT 1 FROM provisioning_applications pa WHERE pa.rule_id = provisioning_rules.id AND pa.rule_version = provisioning_rules.version AND pa.device_id = ?)", deviceID).
 		Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
@@ -70,7 +70,7 @@ func (r *ProvisioningRepository) ListForDevice(ctx context.Context, deviceID int
 		Where("enabled = ?", true).
 		Where("phase = ?", phase).
 		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
-		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
+		Where("(product_classes IS NULL OR jsonb_array_length(product_classes) = 0 OR product_classes @> to_jsonb(LOWER(?)))", productClass).
 		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
 		Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (r *ProvisioningRepository) Update(ctx context.Context, rule *models.Provis
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return tx.Model(&models.ProvisioningRule{}).Where("id = ?", rule.ID).Updates(map[string]interface{}{
 			"parameter_name": rule.ParameterName, "parameter_value": value, "parameter_type": rule.ParameterType,
-			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "tag": rule.Tag, "enabled": rule.Enabled, "description": rule.Description,
+			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "product_classes": rule.ProductClasses, "tag": rule.Tag, "enabled": rule.Enabled, "description": rule.Description,
 			"add_object_path": rule.AddObjectPath, "order": rule.Order,
 			"version": gorm.Expr("version + 1"),
 		}).Error

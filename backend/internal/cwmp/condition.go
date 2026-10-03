@@ -14,6 +14,8 @@ const (
 	OpAnd
 	OpOr
 	OpNot
+	OpHasTag
+	OpNotHasTag
 )
 
 // CompareOp is the comparison operator.
@@ -60,6 +62,8 @@ const (
 	tokNot
 	tokLParen
 	tokRParen
+	tokHasTag
+	tokNotHasTag
 )
 
 type token struct {
@@ -175,6 +179,10 @@ func (l *conditionLexer) lexWord() error {
 		l.tokens = append(l.tokens, token{tokContains, word})
 	case "MATCHES":
 		l.tokens = append(l.tokens, token{tokMatches, word})
+	case "HASTAG":
+		l.tokens = append(l.tokens, token{tokHasTag, word})
+	case "NOTHASTAG":
+		l.tokens = append(l.tokens, token{tokNotHasTag, word})
 	default:
 		l.tokens = append(l.tokens, token{tokIdent, word})
 	}
@@ -261,7 +269,7 @@ func (p *conditionParser) parseNot() (*Condition, error) {
 	return p.parsePrimary()
 }
 
-// parsePrimary parses a primary expression: parenthesized expr or comparison.
+// parsePrimary parses a primary expression: parenthesized expr, hasTag/notHasTag call, or comparison.
 func (p *conditionParser) parsePrimary() (*Condition, error) {
 	if p.peek().typ == tokLParen {
 		p.next()
@@ -273,6 +281,24 @@ func (p *conditionParser) parsePrimary() (*Condition, error) {
 			return nil, fmt.Errorf("missing closing parenthesis")
 		}
 		return expr, nil
+	}
+	if p.peek().typ == tokHasTag || p.peek().typ == tokNotHasTag {
+		op := p.next().typ
+		if _, err := p.expect(tokLParen); err != nil {
+			return nil, fmt.Errorf("expected '(' after hasTag/notHasTag")
+		}
+		tag, err := p.parseOperand()
+		if err != nil {
+			return nil, fmt.Errorf("invalid tag argument: %w", err)
+		}
+		if _, err := p.expect(tokRParen); err != nil {
+			return nil, fmt.Errorf("missing ')' after tag argument")
+		}
+		condOp := OpHasTag
+		if op == tokNotHasTag {
+			condOp = OpNotHasTag
+		}
+		return &Condition{Op: condOp, Right: tag}, nil
 	}
 	return p.parseComparison()
 }
@@ -397,6 +423,10 @@ func Evaluate(cond *Condition, params map[string]string) (bool, error) {
 			return false, err
 		}
 		return !result, nil
+	case OpHasTag:
+		return hasTag(cond.Right, params), nil
+	case OpNotHasTag:
+		return !hasTag(cond.Right, params), nil
 	case OpCompare:
 		return evaluateCompare(cond, params)
 	default:
@@ -441,6 +471,21 @@ func evaluateCompare(cond *Condition, params map[string]string) (bool, error) {
 	default:
 		return false, fmt.Errorf("unknown compare op %d", cond.Compare)
 	}
+}
+
+// hasTag checks whether the device (identified by the "device.tags" key in
+// params, a comma-separated list) carries the given tag.
+func hasTag(tag string, params map[string]string) bool {
+	tagsStr, ok := params["device.tags"]
+	if !ok || tagsStr == "" {
+		return false
+	}
+	for _, t := range strings.Split(tagsStr, ",") {
+		if strings.TrimSpace(t) == tag {
+			return true
+		}
+	}
+	return false
 }
 
 func compareNumeric(a, b string) int {
@@ -498,6 +543,8 @@ func collectParams(cond *Condition, seen map[string]bool, result *[]string) {
 		}
 	case OpNot:
 		collectParams(cond.Sub, seen, result)
+	case OpHasTag, OpNotHasTag:
+		// Device-attr functions: no CWMP params needed.
 	}
 }
 

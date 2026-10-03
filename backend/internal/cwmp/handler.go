@@ -423,7 +423,7 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	session.PendingConditionalData = sessionPendingData
 	session.ConditionalFetchActive = sessionCondFetchActive
 	if sessionImmediateEval {
-		h.evaluateConditionalRules(session, make(map[string]string))
+		h.evaluateConditionalRules(session, h.buildDeviceAttrs(ctx, deviceID))
 	}
 	// Full-tree discovery on BOOTSTRAP or on a brand-new session (e.g. after
 	// ACS restart) so WAN/WiFi/health data is always available. PERIODIC
@@ -563,6 +563,12 @@ func (h *Handler) handleGetParameterValuesResponse(ctx context.Context, resp *Ge
 		paramMap := make(map[string]string, len(resp.ParameterList.Parameters))
 		for _, p := range resp.ParameterList.Parameters {
 			paramMap[p.Name] = p.Value
+		}
+		// Inject device attrs for hasTag/notHasTag and device.* conditions
+		for k, v := range h.buildDeviceAttrs(ctx, session.DeviceID) {
+			if _, exists := paramMap[k]; !exists {
+				paramMap[k] = v
+			}
 		}
 		h.evaluateConditionalRules(session, paramMap)
 		// After evaluation, the next empty post will send the SPV if any rules were satisfied
@@ -717,6 +723,29 @@ func takeProvisioning(session *Session) *SetParameterValues {
 		}
 	}
 	return request
+}
+
+// buildDeviceAttrs loads device-level attributes (tags, product class, manufacturer)
+// and returns them as a params map suitable for condition evaluation.
+func (h *Handler) buildDeviceAttrs(ctx context.Context, deviceID int64) map[string]string {
+	attrs := make(map[string]string)
+	if h.deviceRepo == nil || deviceID <= 0 {
+		return attrs
+	}
+	device, err := h.deviceRepo.GetByID(ctx, deviceID)
+	if err != nil || device == nil {
+		return attrs
+	}
+	if len(device.Tags) > 0 {
+		attrs["device.tags"] = strings.Join(device.Tags, ",")
+	}
+	if device.ProductClass != nil && *device.ProductClass != "" {
+		attrs["device.product_class"] = *device.ProductClass
+	}
+	if device.Manufacturer != nil && *device.Manufacturer != "" {
+		attrs["device.manufacturer"] = *device.Manufacturer
+	}
+	return attrs
 }
 
 // evaluateConditionalRules evaluates pending conditional rules against the provided

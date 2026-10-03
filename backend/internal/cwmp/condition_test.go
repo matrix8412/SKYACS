@@ -330,3 +330,144 @@ func TestValidateCondition_Invalid(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCondition_HasTag(t *testing.T) {
+	cond, err := ParseCondition(`hasTag('branch-a')`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cond.Op != OpHasTag {
+		t.Fatalf("expected OpHasTag, got %v", cond.Op)
+	}
+	if cond.Right != "branch-a" {
+		t.Errorf("unexpected tag: %q", cond.Right)
+	}
+}
+
+func TestParseCondition_NotHasTag(t *testing.T) {
+	cond, err := ParseCondition(`notHasTag('blocked')`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cond.Op != OpNotHasTag {
+		t.Fatalf("expected OpNotHasTag, got %v", cond.Op)
+	}
+	if cond.Right != "blocked" {
+		t.Errorf("unexpected tag: %q", cond.Right)
+	}
+}
+
+func TestParseCondition_HasTagWithAnd(t *testing.T) {
+	cond, err := ParseCondition(`hasTag('branch-a') AND A.B == 'x'`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cond.Op != OpAnd {
+		t.Fatalf("expected OpAnd, got %v", cond.Op)
+	}
+	if len(cond.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(cond.Children))
+	}
+	if cond.Children[0].Op != OpHasTag {
+		t.Errorf("expected first child OpHasTag, got %v", cond.Children[0].Op)
+	}
+}
+
+func TestParseCondition_HasTagInvalid(t *testing.T) {
+	invalidExprs := []string{
+		`hasTag()`,
+		`hasTag('a'`,
+		`hasTag`,
+		`notHasTag`,
+	}
+	for _, expr := range invalidExprs {
+		if err := ValidateCondition(expr); err == nil {
+			t.Errorf("expected error for: %q", expr)
+		}
+	}
+}
+
+func TestEvaluate_HasTag(t *testing.T) {
+	cond, _ := ParseCondition(`hasTag('branch-a')`)
+	params := map[string]string{"device.tags": "branch-a,branch-b"}
+	result, err := Evaluate(cond, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result {
+		t.Fatal("expected true (device has tag branch-a)")
+	}
+
+	params["device.tags"] = "branch-b,branch-c"
+	result, _ = Evaluate(cond, params)
+	if result {
+		t.Fatal("expected false (device does not have tag branch-a)")
+	}
+}
+
+func TestEvaluate_NotHasTag(t *testing.T) {
+	cond, _ := ParseCondition(`notHasTag('blocked')`)
+	params := map[string]string{"device.tags": "branch-a,branch-b"}
+	result, err := Evaluate(cond, params)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result {
+		t.Fatal("expected true (device does not have tag blocked)")
+	}
+
+	params["device.tags"] = "branch-a,blocked"
+	result, _ = Evaluate(cond, params)
+	if result {
+		t.Fatal("expected false (device has tag blocked)")
+	}
+}
+
+func TestEvaluate_HasTagNoTags(t *testing.T) {
+	cond, _ := ParseCondition(`hasTag('branch-a')`)
+	result, _ := Evaluate(cond, map[string]string{})
+	if result {
+		t.Fatal("expected false when no tags are set")
+	}
+}
+
+func TestEvaluate_HasTagCombined(t *testing.T) {
+	cond, _ := ParseCondition(`hasTag('branch-a') AND A.B == 'x'`)
+	params := map[string]string{"device.tags": "branch-a", "A.B": "x"}
+	result, _ := Evaluate(cond, params)
+	if !result {
+		t.Fatal("expected true (both conditions met)")
+	}
+
+	params["A.B"] = "y"
+	result, _ = Evaluate(cond, params)
+	if result {
+		t.Fatal("expected false (A.B mismatch)")
+	}
+}
+
+func TestExtractParamNames_HasTag(t *testing.T) {
+	cond, _ := ParseCondition(`hasTag('branch-a') AND A.B == 'x'`)
+	params := ExtractParamNames(cond)
+	if len(params) != 1 {
+		t.Fatalf("expected 1 CWMP param (A.B), got %d: %v", len(params), params)
+	}
+	if params[0] != "A.B" {
+		t.Errorf("unexpected param: %q", params[0])
+	}
+}
+
+func TestValidateCondition_HasTagValid(t *testing.T) {
+	validExprs := []string{
+		`hasTag('branch-a')`,
+		`notHasTag('blocked')`,
+		`hasTag('a') AND hasTag('b')`,
+		`NOT hasTag('blocked')`,
+		`(hasTag('a') OR hasTag('b')) AND A.B == 'x'`,
+	}
+	for _, expr := range validExprs {
+		if err := ValidateCondition(expr); err != nil {
+			t.Errorf("expected valid: %q, got error: %v", expr, err)
+		}
+	}
+}

@@ -32,7 +32,7 @@ func TestNormalizeTags(t *testing.T) {
 
 func TestValidateProvisioningRuleTag(t *testing.T) {
 	base := func(tag string) error {
-		return validateProvisioningRule("InternetGatewayDevice.ManagementServer.URL", "http://acs.example.com", "string", "", "bootstrap", "", "", tag, "")
+		return validateProvisioningRule("InternetGatewayDevice.ManagementServer.URL", "http://acs.example.com", "string", "", "bootstrap", "", "", nil, tag, "")
 	}
 
 	if err := base(""); err != nil {
@@ -48,10 +48,10 @@ func TestValidateProvisioningRuleTag(t *testing.T) {
 
 func TestValidateProvisioningRuleAddObjectDoesNotRequireParameter(t *testing.T) {
 	path := "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection"
-	if err := validateProvisioningRule("", "", "", path, "bootstrap", "", "", "", ""); err != nil {
+	if err := validateProvisioningRule("", "", "", path, "bootstrap", "", "", nil, "", ""); err != nil {
 		t.Fatalf("AddObject without SetParameterValues fields was rejected: %v", err)
 	}
-	if err := validateProvisioningRule("", "", "string", "", "bootstrap", "", "", "", ""); err == nil {
+	if err := validateProvisioningRule("", "", "string", "", "bootstrap", "", "", nil, "", ""); err == nil {
 		t.Fatal("parameter rule without a name was accepted")
 	}
 }

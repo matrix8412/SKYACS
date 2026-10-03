@@ -39,13 +39,20 @@ const Provisioning: Component = () => {
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
-  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', tag: '', enabled: true, description: '', add_object_path: '', order: 0, condition: '' };
+  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', product_classes: [] as string[], tag: '', enabled: true, description: '', add_object_path: '', order: 0, condition: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
   const [isAddObjectRule, setIsAddObjectRule] = createSignal(false);
 
-  const provisioningPayload = (form: typeof emptyProvisioningRule) => isAddObjectRule()
-    ? { ...form, parameter_name: '', parameter_value: '', parameter_type: 'string', add_object_path: form.parameter_name.trim() }
-    : { ...form, add_object_path: '' };
+  const provisioningPayload = (form: typeof emptyProvisioningRule) => {
+    const base = isAddObjectRule()
+      ? { ...form, parameter_name: '', parameter_value: '', parameter_type: 'string', add_object_path: form.parameter_name.trim() }
+      : { ...form, add_object_path: '' };
+    // If product_classes is populated, clear the legacy single product_class field
+    if (base.product_classes.length > 0) {
+      base.product_class = '';
+    }
+    return base;
+  };
 
   // Provisioning column visibility
   const [provColumns, setProvColumns] = createSignal<ProvColumnConfig[]>((() => {
@@ -241,7 +248,7 @@ const Provisioning: Component = () => {
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
     setIsAddObjectRule(Boolean(p.add_object_path));
-    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
+    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', product_classes: p.product_classes || [], tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
     setShowProvModal(true);
   };
 
@@ -471,13 +478,74 @@ const Provisioning: Component = () => {
               <input id="provisioning-manufacturer" type="text" value={provForm().manufacturer} onInput={(e) => setProvForm(f => ({ ...f, manufacturer: e.currentTarget.value }))} class="input w-full" placeholder="Leave empty to match all" />
             </div>
             <div>
-              <label for="provisioning-product-class" class="block text-xs text-muted mb-1.5">Product class (optional)</label>
-              <input id="provisioning-product-class" type="text" value={provForm().product_class} onInput={(e) => setProvForm(f => ({ ...f, product_class: e.currentTarget.value }))} class="input w-full" placeholder="Leave empty to match all" />
+              <label class="block text-xs text-muted mb-1.5">Product classes (optional)</label>
+              <div class="flex flex-wrap gap-1.5 mb-1.5">
+                <For each={provForm().product_classes}>
+                  {(pc) => (
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 text-xs">
+                      {pc}
+                      <button type="button" class="hover:text-sky-100" onClick={() => setProvForm(f => ({ ...f, product_classes: f.product_classes.filter(x => x !== pc) }))} aria-label={`Remove ${pc}`}>
+                        <X size={10} />
+                      </button>
+                    </span>
+                  )}
+                </For>
+              </div>
+              <input
+                type="text"
+                class="input w-full"
+                placeholder="Type a product class and press Enter"
+                value={provForm().product_class}
+                onInput={(e) => setProvForm(f => ({ ...f, product_class: e.currentTarget.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    const val = provForm().product_class.trim().toLowerCase();
+                    if (val && !provForm().product_classes.includes(val)) {
+                      setProvForm(f => ({ ...f, product_classes: [...f.product_classes, val], product_class: '' }));
+                    }
+                  }
+                }}
+              />
+              <p class="text-xs text-muted mt-1">Match any of the listed product classes. Leave empty to match all.</p>
             </div>
             <div>
-              <label for="provisioning-tag" class="block text-xs text-muted mb-1.5">CPE tag (optional)</label>
-              <input id="provisioning-tag" type="text" value={provForm().tag} onInput={(e) => setProvForm(f => ({ ...f, tag: e.currentTarget.value }))} class="input w-full" placeholder="branch-a (leave empty to apply to all CPEs)" />
-              <p class="text-xs text-muted mt-1">Applies the rule only to CPEs that carry this tag. Leave empty to apply to all matching CPEs.</p>
+              <label class="block text-xs text-muted mb-1.5">CPE tag conditions (optional)</label>
+              <div class="flex flex-wrap gap-1.5 mb-1.5">
+                <For each={provForm().tag ? [provForm().tag] : []}>
+                  {(tag) => (
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 text-xs">
+                      hasTag('{tag}')
+                      <button type="button" class="hover:text-amber-100" onClick={() => setProvForm(f => ({ ...f, tag: '' }))} aria-label={`Remove tag ${tag}`}>
+                        <X size={10} />
+                      </button>
+                    </span>
+                  )}
+                </For>
+              </div>
+              <input
+                id="provisioning-tag"
+                type="text"
+                class="input w-full"
+                placeholder="branch-a (press Enter to add)"
+                value={provForm().tag}
+                onInput={(e) => setProvForm(f => ({ ...f, tag: e.currentTarget.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const val = provForm().tag.trim().toLowerCase();
+                    if (val) {
+                      setProvForm(f => {
+                        const hasTagExpr = `hasTag('${val}')`;
+                        const existing = f.condition.trim();
+                        const newCondition = existing ? `${existing} AND ${hasTagExpr}` : hasTagExpr;
+                        return { ...f, tag: '', condition: newCondition };
+                      });
+                    }
+                  }
+                }}
+              />
+              <p class="text-xs text-muted mt-1">Adds <code class="text-amber-400">hasTag('…')</code> to the condition. The rule applies only to CPEs carrying that tag.</p>
             </div>
             <Show when={!isAddObjectRule()}>
               <div>
@@ -506,7 +574,7 @@ const Provisioning: Component = () => {
             <div>
               <label for="provisioning-condition" class="block text-xs text-muted mb-1.5">Condition (optional)</label>
               <textarea id="provisioning-condition" rows={2} value={provForm().condition} onInput={(e) => setProvForm(f => ({ ...f, condition: e.currentTarget.value }))} class="input w-full font-mono text-xs" placeholder="InternetGatewayDevice.DeviceInfo.Manufacturer == 'SkyDash' AND Device.Model contains 'AC1000'" />
-              <p class="text-xs text-muted mt-1">Rule applies only when the condition is true. Operators: <code>==</code> <code>!=</code> <code>&gt;</code> <code>&lt;</code> <code>&gt;=</code> <code>&lt;=</code> <code>contains</code> <code>matches</code>. Combine with <code>AND</code>, <code>OR</code>, <code>NOT</code> and parentheses. Leave empty to always apply.</p>
+              <p class="text-xs text-muted mt-1">Rule applies only when the condition is true. Operators: <code>==</code> <code>!=</code> <code>&gt;</code> <code>&lt;</code> <code>&gt;=</code> <code>&lt;=</code> <code>contains</code> <code>matches</code>. Device functions: <code>hasTag('…')</code> <code>notHasTag('…')</code>. Combine with <code>AND</code>, <code>OR</code>, <code>NOT</code> and parentheses. Leave empty to always apply.</p>
             </div>
             <div class="flex items-center gap-2">
               <input id="provisioning-enabled" type="checkbox" checked={provForm().enabled} onChange={(e) => setProvForm(f => ({ ...f, enabled: e.currentTarget.checked }))} class="rounded" />
