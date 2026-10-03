@@ -1266,8 +1266,7 @@ const DeviceDetail: Component = () => {
                         {(wan) => (
                           <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
                             <td class="px-3 py-2.5 text-primary font-medium">
-                              <div>{wan.name}</div>
-                              <div class="text-[10px] text-muted font-mono font-normal">{wan.path}</div>
+                              <div title={wan.path}>{wan.name}</div>
                             </td>
                             <td class="px-3 py-2.5">
                               <span class={`badge ${wan.status === 'Connected' ? 'badge-success' : wan.status === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.status}</span>
@@ -1284,14 +1283,14 @@ const DeviceDetail: Component = () => {
                             <td class="px-3 py-2.5 text-primary font-mono">{wan.ipAddress}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.service}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.nat}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.lan1 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.lan2 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.lan3 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.lan4 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.ssid1 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.ssid2 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.ssid3 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{wan.ssid4 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan1} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan2} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan3} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan4} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid1} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid2} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid3} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid4} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
                             <td class="px-2 py-2">
                               <Show when={isFullAccess()} fallback={<span class="text-muted text-xs">-</span>}>
                                 <button
