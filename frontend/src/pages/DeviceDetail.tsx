@@ -100,8 +100,7 @@ const DeviceDetail: Component = () => {
   const [wifiModalIndex, setWifiModalIndex] = createSignal<number | null>(null);
   const [lanModalIndex, setLanModalIndex] = createSignal<number | null>(null);
   const [wanModalPath, setWanModalPath] = createSignal<string | null>(null);
-  const [editingPPP, setEditingPPP] = createSignal<string | null>(null);
-  const [pppEdits, setPPPEdits] = createSignal<Record<string, string>>({});
+
   const [refreshInterval, setRefreshInterval] = createSignal<number>(
     parseInt(localStorage.getItem(`skyacs_auto_refresh_${params.serial}`) ?? '30000', 10)
   );
@@ -309,45 +308,6 @@ const DeviceDetail: Component = () => {
       refetchTasks();
     } catch (err) {
       showMessage('error', `SSID${index} state was not changed. Check the CPE session and retry.`, (err as Error).message);
-    }
-    setActionLoading(null);
-  };
-
-  const handleEditPPP = (path: string, username: string, password: string) => {
-    setEditingPPP(path);
-    setPPPEdits({ username: username === '-' ? '' : username, password: password === '-' || password === '******' ? '' : password });
-  };
-
-  const handleCancelEditPPP = () => {
-    setEditingPPP(null);
-    setPPPEdits({});
-  };
-
-  const handleSavePPP = async (path: string) => {
-    const edits = pppEdits();
-    if (!edits.username && !edits.password) {
-      handleCancelEditPPP();
-      return;
-    }
-
-    setActionLoading(`ppp-${path}`);
-    try {
-      const params: Record<string, string> = {};
-      const prefix = path;
-      
-      if (edits.username) {
-        params[prefix + 'Username'] = edits.username;
-      }
-      if (edits.password) {
-        params[prefix + 'Password'] = edits.password;
-      }
-
-      await api.setParameterValues(serial(), params);
-      showMessage('success', `PPPoE credential update queued for ${path}.`);
-      refetchTasks();
-      handleCancelEditPPP();
-    } catch (err) {
-      showMessage('error', `PPPoE credentials for ${path} were not queued. The entered values are preserved; retry after checking the CPE session.`, (err as Error).message);
     }
     setActionLoading(null);
   };
@@ -1319,28 +1279,7 @@ const DeviceDetail: Component = () => {
                             <td class="px-3 py-2.5 text-secondary">{wan.type}</td>
                             <td class="px-3 py-2.5 text-primary font-mono">{wan.vlan}</td>
                             <td class="px-3 py-2.5">
-                              <Show when={editingPPP() === wan.path} fallback={
-                                <span class="text-secondary font-mono">{wan.username}</span>
-                              }>
-                                <div class="space-y-1">
-                                  <input
-                                    type="text"
-                                    value={pppEdits().username || ''}
-                                    onInput={(e) => setPPPEdits({ ...pppEdits(), username: e.currentTarget.value })}
-                                    class="w-28 px-2 py-1 text-sm border border-default rounded bg-elevated text-primary"
-                                    placeholder="Username"
-                                    aria-label={`PPPoE username for ${wan.name}`}
-                                  />
-                                  <input
-                                    type="password"
-                                    value={pppEdits().password || ''}
-                                    onInput={(e) => setPPPEdits({ ...pppEdits(), password: e.currentTarget.value })}
-                                    class="w-28 px-2 py-1 text-sm border border-default rounded bg-elevated text-primary"
-                                    placeholder="Password"
-                                    aria-label={`New PPPoE password for ${wan.name}`}
-                                  />
-                                </div>
-                              </Show>
+                              <span class="text-secondary font-mono">{wan.username}</span>
                             </td>
                             <td class="px-3 py-2.5 text-primary font-mono">{wan.ipAddress}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.service}</td>
