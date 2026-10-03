@@ -4,8 +4,10 @@ export interface WanParameter {
 }
 
 export interface PortParams {
-  serviceListPath: string;
-  serviceListValue: string;
+  serviceListPath?: string;
+  serviceListValue?: string;
+  lanEnablePaths?: Record<number, string>;
+  ssidEnablePaths?: Record<number, string>;
 }
 
 export interface WanProfile {
@@ -29,6 +31,10 @@ export interface WanProfile {
   ssid2: boolean;
   ssid3: boolean;
   ssid4: boolean;
+  ssid5: boolean;
+  ssid6: boolean;
+  ssid7: boolean;
+  ssid8: boolean;
   portParams?: PortParams;
 }
 
@@ -80,8 +86,21 @@ export function getWanProfiles(parameters: WanParameter[]): WanProfile[] {
     const serviceListParam = relevant.find(p =>
       /X_HW_SERVICELIST|X_HW_ServiceList|ServiceList|X_CT_ServiceList|X_CU_ServiceList/i.test(p.name)
     );
-    const portParams = serviceListParam
-      ? { serviceListPath: serviceListParam.name, serviceListValue: serviceListParam.value }
+    const lanEnablePaths: Record<number, string> = {};
+    const ssidEnablePaths: Record<number, string> = {};
+    for (const p of relevant) {
+      const lanMatch = p.name.match(/\.Lan(\d+)Enable$/i);
+      if (lanMatch) { lanEnablePaths[Number(lanMatch[1])] = p.name; continue; }
+      const ssidMatch = p.name.match(/\.SSID(\d+)Enable$/i);
+      if (ssidMatch) { ssidEnablePaths[Number(ssidMatch[1])] = p.name; }
+    }
+    const hasBooleanPaths = Object.keys(lanEnablePaths).length > 0 || Object.keys(ssidEnablePaths).length > 0;
+    const portParams = serviceListParam || hasBooleanPaths
+      ? {
+          ...(serviceListParam ? { serviceListPath: serviceListParam.name, serviceListValue: serviceListParam.value } : {}),
+          ...(Object.keys(lanEnablePaths).length > 0 ? { lanEnablePaths } : {}),
+          ...(Object.keys(ssidEnablePaths).length > 0 ? { ssidEnablePaths } : {}),
+        }
       : undefined;
     return {
       path,
@@ -104,6 +123,10 @@ export function getWanProfiles(parameters: WanParameter[]): WanProfile[] {
       ssid2: portBinding(2, 'ssid'),
       ssid3: portBinding(3, 'ssid'),
       ssid4: portBinding(4, 'ssid'),
+      ssid5: portBinding(5, 'ssid'),
+      ssid6: portBinding(6, 'ssid'),
+      ssid7: portBinding(7, 'ssid'),
+      ssid8: portBinding(8, 'ssid'),
       portParams,
     };
   });

@@ -343,6 +343,19 @@ const DeviceDetail: Component = () => {
       const terms = portTerms(portNumber, kind);
       const allWans = wanProfiles();
 
+      const boolPath = kind === 'ssid'
+        ? wan.portParams.ssidEnablePaths?.[portNumber]
+        : wan.portParams.lanEnablePaths?.[portNumber];
+      if (boolPath) {
+        params[boolPath] = check ? 'true' : 'false';
+        await api.setParameterValues(serial(), params);
+        const portLabel = kind === 'lan' ? `L${portNumber}` : `S${portNumber}`;
+        showMessage('success', `WAN tie ${portLabel} ${check ? 'assigned to' : 'removed from'} ${wan.name} task created.`);
+        refetchTasks();
+        setActionLoading(null);
+        return;
+      }
+
       if (check) {
         const currentList = parseServiceList(wan.portParams.serviceListValue);
         if (!terms.some(t => currentList.some(item => item.toLowerCase() === t.toLowerCase()))) {
@@ -1327,6 +1340,10 @@ const DeviceDetail: Component = () => {
                         <th class="text-center px-2 py-2.5 font-semibold text-primary">S2</th>
                         <th class="text-center px-2 py-2.5 font-semibold text-primary">S3</th>
                         <th class="text-center px-2 py-2.5 font-semibold text-primary">S4</th>
+                        <th class="text-center px-2 py-2.5 font-semibold text-primary">S5</th>
+                        <th class="text-center px-2 py-2.5 font-semibold text-primary">S6</th>
+                        <th class="text-center px-2 py-2.5 font-semibold text-primary">S7</th>
+                        <th class="text-center px-2 py-2.5 font-semibold text-primary">S8</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary"></th>
                       </tr>
                     </thead>
@@ -1399,6 +1416,26 @@ const DeviceDetail: Component = () => {
                             <td class="px-2 py-2.5 text-center">
                               <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid4} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
                                 <input type="checkbox" checked={wan.ssid4} onChange={() => handleWanTie(wan, 4, 'ssid', !wan.ssid4)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S4 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid5} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid5} onChange={() => handleWanTie(wan, 5, 'ssid', !wan.ssid5)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S5 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid6} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid6} onChange={() => handleWanTie(wan, 6, 'ssid', !wan.ssid6)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S6 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid7} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid7} onChange={() => handleWanTie(wan, 7, 'ssid', !wan.ssid7)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S7 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid8} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid8} onChange={() => handleWanTie(wan, 8, 'ssid', !wan.ssid8)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S8 to ${wan.name}`} />
                               </Show>
                             </td>
                             <td class="px-2 py-2">

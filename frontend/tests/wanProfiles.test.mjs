@@ -88,3 +88,63 @@ test('portParams picks up X_CT_ServiceList variant', () => {
   assert.equal(profiles[0].portParams.serviceListPath, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.X_CT_ServiceList');
   assert.equal(profiles[0].portParams.serviceListValue, 'eth1');
 });
+
+test('extracts SSID boolean enable paths and populates portParams without service list', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID1Enable', value: '1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID2Enable', value: '0' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable', value: '1' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  assert.equal(profiles.length, 1);
+  assert.ok(profiles[0].portParams);
+  assert.equal(profiles[0].portParams.serviceListPath, undefined);
+  assert.equal(
+    profiles[0].portParams.ssidEnablePaths[1],
+    'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID1Enable'
+  );
+  assert.equal(
+    profiles[0].portParams.ssidEnablePaths[2],
+    'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID2Enable'
+  );
+  assert.equal(
+    profiles[0].portParams.lanEnablePaths[1],
+    'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable'
+  );
+  assert.equal(profiles[0].ssid1, true);
+  assert.equal(profiles[0].ssid2, false);
+  assert.equal(profiles[0].lan1, true);
+});
+
+test('portParams is present when only boolean paths exist (no service list)', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID1Enable', value: 'true' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  assert.equal(profiles.length, 1);
+  assert.ok(profiles[0].portParams);
+  assert.equal(profiles[0].portParams.serviceListPath, undefined);
+  assert.ok(profiles[0].portParams.ssidEnablePaths);
+  assert.equal(profiles[0].portParams.ssidEnablePaths[1], 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID1Enable');
+});
+
+test('discovers SSID5-8 boolean enable paths', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID5Enable', value: '1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID6Enable', value: '1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID7Enable', value: '0' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID8Enable', value: '0' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].ssid5, true);
+  assert.equal(profiles[0].ssid6, true);
+  assert.equal(profiles[0].ssid7, false);
+  assert.equal(profiles[0].ssid8, false);
+  assert.ok(profiles[0].portParams);
+  assert.equal(profiles[0].portParams.ssidEnablePaths[5], 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID5Enable');
+  assert.equal(profiles[0].portParams.ssidEnablePaths[8], 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID8Enable');
+});
