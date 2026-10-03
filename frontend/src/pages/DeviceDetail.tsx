@@ -12,6 +12,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { getWanProfiles, type WanProfile } from '../lib/wanProfiles';
+import { lanStatusColor } from '../lib/lanFields';
 import { usePageSize } from '../lib/usePageSize';
 import { appName } from '../lib/appName';
 import WifiSettingsModal from '../components/WifiSettingsModal';
@@ -356,22 +357,32 @@ const DeviceDetail: Component = () => {
         return;
       }
 
+      const serviceListPath = wan.portParams.serviceListPath;
+      const serviceListValue = wan.portParams.serviceListValue;
+      if (!serviceListPath || serviceListValue === undefined) {
+        setActionLoading(null);
+        return;
+      }
+
       if (check) {
-        const currentList = parseServiceList(wan.portParams.serviceListValue);
+        const currentList = parseServiceList(serviceListValue);
         if (!terms.some(t => currentList.some(item => item.toLowerCase() === t.toLowerCase()))) {
           currentList.push(kind === 'lan' ? `lan${portNumber}` : `ssid${portNumber}`);
         }
-        params[wan.portParams.serviceListPath] = currentList.join(',');
+        params[serviceListPath] = currentList.join(',');
         for (const other of allWans) {
           if (other.path === wan.path || !other.portParams) continue;
-          const otherList = parseServiceList(other.portParams.serviceListValue);
+          const otherPath = other.portParams.serviceListPath;
+          const otherValue = other.portParams.serviceListValue;
+          if (!otherPath || otherValue === undefined) continue;
+          const otherList = parseServiceList(otherValue);
           if (terms.some(t => otherList.some(item => item.toLowerCase() === t.toLowerCase()))) {
-            params[other.portParams.serviceListPath] = otherList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
+            params[otherPath] = otherList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
           }
         }
       } else {
-        const currentList = parseServiceList(wan.portParams.serviceListValue);
-        params[wan.portParams.serviceListPath] = currentList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
+        const currentList = parseServiceList(serviceListValue);
+        params[serviceListPath] = currentList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
       }
 
       await api.setParameterValues(serial(), params);
@@ -1488,7 +1499,7 @@ const DeviceDetail: Component = () => {
                             <td class="px-3 py-2.5 text-primary font-medium">{lan.name}</td>
                             <td class="px-3 py-2.5">
                               <span class="inline-flex items-center gap-1.5">
-                                <span class={`w-2 h-2 rounded-full ${lan.status.toLowerCase() === 'nolink' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                <span class={`w-2 h-2 rounded-full ${lanStatusColor(lan.status)}`} />
                                 <span class="text-secondary">{lan.status}</span>
                               </span>
                             </td>

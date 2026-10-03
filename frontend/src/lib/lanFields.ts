@@ -71,3 +71,10 @@ export function validateFields(
   }
   return errors;
 }
+
+export function lanStatusColor(status: string): string {
+  const s = status.trim().toLowerCase();
+  if (s === 'nolink' || s === 'linkdown' || s === 'down' || s === 'disabled') return 'bg-rose-500';
+  if (s === 'up' || s === 'linkup' || s === 'connected' || s === 'enabled') return 'bg-emerald-500';
+  return 'bg-gray-400';
+}
