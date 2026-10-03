@@ -15,6 +15,8 @@ import { getWanProfiles } from '../lib/wanProfiles';
 import { usePageSize } from '../lib/usePageSize';
 import { appName } from '../lib/appName';
 import WifiSettingsModal from '../components/WifiSettingsModal';
+import LanSettingsModal from '../components/LanSettingsModal';
+import WanSettingsModal from '../components/WanSettingsModal';
 
 interface HostColumnConfig {
   id: string;
@@ -96,6 +98,8 @@ const DeviceDetail: Component = () => {
   const [message, setMessage] = createSignal<{ type: 'success' | 'error'; text: string; detail?: string } | null>(null);
   const [paramFilter, setParamFilter] = createSignal('');
   const [wifiModalIndex, setWifiModalIndex] = createSignal<number | null>(null);
+  const [lanModalIndex, setLanModalIndex] = createSignal<number | null>(null);
+  const [wanModalPath, setWanModalPath] = createSignal<string | null>(null);
   const [editingPPP, setEditingPPP] = createSignal<string | null>(null);
   const [pppEdits, setPPPEdits] = createSignal<Record<string, string>>({});
   const [refreshInterval, setRefreshInterval] = createSignal<number>(
@@ -1350,36 +1354,14 @@ const DeviceDetail: Component = () => {
                             <td class="px-2 py-2.5 text-center">{wan.ssid3 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
                             <td class="px-2 py-2.5 text-center">{wan.ssid4 ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
                             <td class="px-2 py-2">
-                              <Show when={isFullAccess() && wan.path.includes('.WANPPPConnection.')} fallback={<span class="text-muted text-xs">-</span>}>
-                                <Show when={editingPPP() === wan.path} fallback={
-                                  <button
-                                    onClick={() => handleEditPPP(wan.path, wan.username, wan.password)}
-                                    disabled={actionLoading() !== null}
-                                    class="icon-button"
-                                    aria-label={`Edit PPPoE credentials for ${wan.name}`}
-                                  >
-                                    <Edit size={14} />
-                                  </button>
-                                }>
-                                  <div class="flex gap-1">
-                                    <button
-                                      onClick={() => handleSavePPP(wan.path)}
-                                      disabled={actionLoading() === `ppp-${wan.path}`}
-                                      class="icon-button"
-                                      aria-label={`Queue PPPoE credential update for ${wan.name}`}
-                                    >
-                                      <Save size={14} />
-                                    </button>
-                                    <button
-                                      onClick={handleCancelEditPPP}
-                                      disabled={actionLoading() !== null}
-                                      class="icon-button"
-                                      aria-label={`Cancel PPPoE edit for ${wan.name}`}
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </div>
-                                </Show>
+                              <Show when={isFullAccess()} fallback={<span class="text-muted text-xs">-</span>}>
+                                <button
+                                  onClick={() => setWanModalPath(wan.path)}
+                                  class="icon-button"
+                                  aria-label={`Edit WAN connection ${wan.name}`}
+                                >
+                                  <Edit size={14} />
+                                </button>
                               </Show>
                             </td>
                           </tr>
@@ -1411,6 +1393,7 @@ const DeviceDetail: Component = () => {
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Speed</th>
                         <th class="text-center px-2 py-2.5 font-semibold text-primary">L3</th>
                         <th class="text-center px-2 py-2.5 font-semibold text-primary">Enable</th>
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1429,6 +1412,17 @@ const DeviceDetail: Component = () => {
                             <td class="px-3 py-2.5 text-secondary">{lan.speed}</td>
                             <td class="px-2 py-2.5 text-center">{lan.l3Enable === '1' || lan.l3Enable === 'true' ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
                             <td class="px-2 py-2.5 text-center">{lan.enabled ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
+                            <td class="px-2 py-2">
+                              <Show when={isFullAccess()} fallback={<span class="text-muted text-xs">-</span>}>
+                                <button
+                                  onClick={() => setLanModalIndex(lan.index)}
+                                  class="icon-button"
+                                  aria-label={`Edit LAN interface ${lan.name}`}
+                                >
+                                  <Edit size={14} />
+                                </button>
+                              </Show>
+                            </td>
                           </tr>
                         )}
                       </For>
@@ -1857,6 +1851,28 @@ const DeviceDetail: Component = () => {
           serial={serial()}
           isFullAccess={isFullAccess()}
           onClose={() => setWifiModalIndex(null)}
+          onSaved={() => { refetchParams(); refetchTasks(); }}
+        />
+      </Show>
+
+      <Show when={lanModalIndex() !== null && parameters()}>
+        <LanSettingsModal
+          lanIndex={lanModalIndex()!}
+          parameters={parameters()!}
+          serial={serial()}
+          isFullAccess={isFullAccess()}
+          onClose={() => setLanModalIndex(null)}
+          onSaved={() => { refetchParams(); refetchTasks(); }}
+        />
+      </Show>
+
+      <Show when={wanModalPath() !== null && parameters()}>
+        <WanSettingsModal
+          wanPath={wanModalPath()!}
+          parameters={parameters()!}
+          serial={serial()}
+          isFullAccess={isFullAccess()}
+          onClose={() => setWanModalPath(null)}
           onSaved={() => { refetchParams(); refetchTasks(); }}
         />
       </Show>
