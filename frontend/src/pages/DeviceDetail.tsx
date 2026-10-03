@@ -14,6 +14,7 @@ import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { getWanProfiles } from '../lib/wanProfiles';
 import { usePageSize } from '../lib/usePageSize';
 import { appName } from '../lib/appName';
+import WifiSettingsModal from '../components/WifiSettingsModal';
 
 interface HostColumnConfig {
   id: string;
@@ -94,8 +95,7 @@ const DeviceDetail: Component = () => {
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [message, setMessage] = createSignal<{ type: 'success' | 'error'; text: string; detail?: string } | null>(null);
   const [paramFilter, setParamFilter] = createSignal('');
-  const [editingWifi, setEditingWifi] = createSignal<number | null>(null);
-  const [wifiEdits, setWifiEdits] = createSignal<Record<string, string>>({});
+  const [wifiModalIndex, setWifiModalIndex] = createSignal<number | null>(null);
   const [editingPPP, setEditingPPP] = createSignal<string | null>(null);
   const [pppEdits, setPPPEdits] = createSignal<Record<string, string>>({});
   const [refreshInterval, setRefreshInterval] = createSignal<number>(
@@ -288,45 +288,6 @@ const DeviceDetail: Component = () => {
       await api.getParameterValues(serial(), [hasTR181 ? 'Device.' : 'InternetGatewayDevice.']);
     } catch (err) {
       showMessage('error', 'Connection request failed. Verify reachability and credentials, then retry.', (err as Error).message);
-    }
-    setActionLoading(null);
-  };
-
-  const handleEditWifi = (index: number, ssid: string, password: string) => {
-    setEditingWifi(index);
-    setWifiEdits({ ssid, password });
-  };
-
-  const handleCancelEditWifi = () => {
-    setEditingWifi(null);
-    setWifiEdits({});
-  };
-
-  const handleSaveWifi = async (index: number) => {
-    const edits = wifiEdits();
-    if (!edits.ssid && !edits.password) {
-      handleCancelEditWifi();
-      return;
-    }
-
-    setActionLoading(`wifi-${index}`);
-    try {
-      const params: Record<string, string> = {};
-      const prefix = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${index}.`;
-      
-      if (edits.ssid) {
-        params[prefix + 'SSID'] = edits.ssid;
-      }
-      if (edits.password) {
-        params[prefix + 'PreSharedKey.1.PreSharedKey'] = edits.password;
-      }
-
-      await api.setParameterValues(serial(), params);
-      showMessage('success', `Wi-Fi SSID${index} update task created.`);
-      refetchTasks();
-      handleCancelEditWifi();
-    } catch (err) {
-      showMessage('error', 'Wi-Fi update task was not created. The entered values are preserved; check the session and retry.', (err as Error).message);
     }
     setActionLoading(null);
   };
@@ -1520,62 +1481,24 @@ const DeviceDetail: Component = () => {
                             </td>
                             <td class="px-3 py-2 text-secondary">{wlan.status}</td>
                             <td class="px-3 py-2">
-                              <Show when={editingWifi() === wlan.index} fallback={
-                                <span class="text-primary font-medium">{wlan.ssid}</span>
-                              }>
-                                <input
-                                  type="text"
-                                  value={wifiEdits().ssid || ''}
-                                  onInput={(e) => setWifiEdits({ ...wifiEdits(), ssid: e.currentTarget.value })}
-                                  class="input py-1 px-2 text-sm w-32"
-                                  placeholder="SSID Name"
-                                  aria-label={`SSID name for SSID${wlan.index}`}
-                                />
-                              </Show>
+                              <span class="text-primary font-medium">{wlan.ssid}</span>
                             </td>
                             <td class="px-3 py-2 text-secondary">{wlan.security}</td>
                             <td class="px-3 py-2 text-secondary">{wlan.frequency}</td>
                             <td class="px-3 py-2 text-secondary">{wlan.channel}</td>
                             <td class="px-3 py-2 text-secondary">{wlan.maxBitrate}</td>
                             <td class="px-3 py-2">
-                              <Show when={editingWifi() === wlan.index} fallback={
-                                <span class="text-muted font-mono text-xs">{showSensitive() ? wlan.password : '••••••••'}</span>
-                              }>
-                                <input
-                                  type="password"
-                                  value={wifiEdits().password || ''}
-                                  onInput={(e) => setWifiEdits({ ...wifiEdits(), password: e.currentTarget.value })}
-                                  class="input py-1 px-2 text-sm w-28"
-                                  placeholder="Password"
-                                  aria-label={`New wireless password for SSID${wlan.index}`}
-                                />
-                              </Show>
+                              <span class="text-muted font-mono text-xs">{showSensitive() ? wlan.password : '••••••••'}</span>
                             </td>
                             <td class="px-3 py-2">
-                              <Show when={isFullAccess()}><Show when={editingWifi() === wlan.index} fallback={
+                              <Show when={isFullAccess()}>
                                 <button 
-                                  onClick={() => handleEditWifi(wlan.index, wlan.ssid, wlan.password)}
+                                  onClick={() => setWifiModalIndex(wlan.index)}
                                   class="text-sky-400 hover:text-sky-300 flex items-center gap-1"
                                 >
                                   <Edit size={12} /> Edit
                                 </button>
-                              }>
-                                <div class="flex items-center gap-2">
-                                  <button 
-                                    onClick={() => handleSaveWifi(wlan.index)}
-                                    disabled={actionLoading() === `wifi-${wlan.index}`}
-                                    class="text-emerald-400 hover:text-emerald-300"
-                                  >
-                                    <Save size={14} />
-                                  </button>
-                                  <button 
-                                    onClick={handleCancelEditWifi}
-                                    class="text-secondary hover:text-secondary"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              </Show></Show>
+                              </Show>
                             </td>
                           </tr>
                         )}
@@ -1927,6 +1850,16 @@ const DeviceDetail: Component = () => {
         </Dialog>
       </Show>
 
+      <Show when={wifiModalIndex() !== null && parameters()}>
+        <WifiSettingsModal
+          wlanIndex={wifiModalIndex()!}
+          parameters={parameters()!}
+          serial={serial()}
+          isFullAccess={isFullAccess()}
+          onClose={() => setWifiModalIndex(null)}
+          onSaved={() => { refetchParams(); refetchTasks(); }}
+        />
+      </Show>
 
     </div>
   );
