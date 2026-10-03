@@ -11,7 +11,7 @@ import MetricChart from '../components/MetricChart';
 import ColumnFilter from '../components/ColumnFilter';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
-import { getWanProfiles } from '../lib/wanProfiles';
+import { getWanProfiles, type WanProfile } from '../lib/wanProfiles';
 import { usePageSize } from '../lib/usePageSize';
 import { appName } from '../lib/appName';
 import WifiSettingsModal from '../components/WifiSettingsModal';
@@ -310,6 +310,75 @@ const DeviceDetail: Component = () => {
       showMessage('error', `SSID${index} state was not changed. Check the CPE session and retry.`, (err as Error).message);
     }
     setActionLoading(null);
+  };
+
+  const toggleParam = async (paramPath: string, value: string, successMsg: string) => {
+    const key = `toggle-${paramPath}`;
+    setActionLoading(key);
+    try {
+      await api.setParameterValues(serial(), { [paramPath]: value });
+      showMessage('success', `${successMsg} task created.`);
+      refetchTasks();
+    } catch (err) {
+      showMessage('error', `${successMsg} was not applied. Check the CPE session and retry.`, (err as Error).message);
+    }
+    setActionLoading(null);
+  };
+
+  const handleWanEnable = async (wan: WanProfile, enable: boolean) => {
+    await toggleParam(wan.path + 'Enable', enable ? '1' : '0', `WAN ${wan.name} ${enable ? 'enabled' : 'disabled'}`);
+  };
+
+  const portTerms = (number: number, kind: 'lan' | 'ssid') =>
+    kind === 'lan' ? [`lan${number}`, `eth${number}`, `port${number}`] : [`ssid${number}`, `wlan${number}`, `wifi${number}`];
+
+  const parseServiceList = (value: string) => value.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
+
+  const handleWanTie = async (wan: WanProfile, portNumber: number, kind: 'lan' | 'ssid', check: boolean) => {
+    if (!wan.portParams) return;
+    const key = `wan-tie-${wan.path}-${kind}${portNumber}`;
+    setActionLoading(key);
+    try {
+      const params: Record<string, string> = {};
+      const terms = portTerms(portNumber, kind);
+      const allWans = wanProfiles();
+
+      if (check) {
+        const currentList = parseServiceList(wan.portParams.serviceListValue);
+        if (!terms.some(t => currentList.some(item => item.toLowerCase() === t.toLowerCase()))) {
+          currentList.push(kind === 'lan' ? `lan${portNumber}` : `ssid${portNumber}`);
+        }
+        params[wan.portParams.serviceListPath] = currentList.join(',');
+        for (const other of allWans) {
+          if (other.path === wan.path || !other.portParams) continue;
+          const otherList = parseServiceList(other.portParams.serviceListValue);
+          if (terms.some(t => otherList.some(item => item.toLowerCase() === t.toLowerCase()))) {
+            params[other.portParams.serviceListPath] = otherList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
+          }
+        }
+      } else {
+        const currentList = parseServiceList(wan.portParams.serviceListValue);
+        params[wan.portParams.serviceListPath] = currentList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
+      }
+
+      await api.setParameterValues(serial(), params);
+      const portLabel = kind === 'lan' ? `L${portNumber}` : `S${portNumber}`;
+      showMessage('success', `WAN tie ${portLabel} ${check ? 'assigned to' : 'removed from'} ${wan.name} task created.`);
+      refetchTasks();
+    } catch (err) {
+      showMessage('error', 'WAN tie change was not applied. Check the CPE session and retry.', (err as Error).message);
+    }
+    setActionLoading(null);
+  };
+
+  const handleLanEnable = async (index: number, enable: boolean) => {
+    const prefix = `InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.${index}.`;
+    await toggleParam(prefix + 'Enable', enable ? '1' : '0', `LAN${index} ${enable ? 'enabled' : 'disabled'}`);
+  };
+
+  const handleLanL3 = async (index: number, enable: boolean) => {
+    const prefix = `InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.${index}.`;
+    await toggleParam(prefix + 'X_HW_L3Enable', enable ? '1' : '0', `LAN${index} L3 ${enable ? 'enabled' : 'disabled'}`);
   };
 
   const getModemCredentials = () => {
@@ -1272,7 +1341,16 @@ const DeviceDetail: Component = () => {
                               <span class={`badge ${wan.status === 'Connected' ? 'badge-success' : wan.status === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.status}</span>
                             </td>
                             <td class="px-3 py-2.5">
-                              <span class={`badge ${wan.enable === 'Enabled' ? 'badge-success' : wan.enable === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.enable}</span>
+                              <Show when={isFullAccess()} fallback={<span class={`badge ${wan.enable === 'Enabled' ? 'badge-success' : wan.enable === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.enable}</span>}>
+                                <button
+                                  onClick={() => handleWanEnable(wan, wan.enable !== 'Enabled')}
+                                  disabled={actionLoading() !== null}
+                                  class={`badge cursor-pointer ${wan.enable === 'Enabled' ? 'badge-success' : 'badge-error'}`}
+                                  aria-label={`${wan.enable === 'Enabled' ? 'Disable' : 'Enable'} WAN ${wan.name}`}
+                                >
+                                  {wan.enable === 'Enabled' ? 'Enabled' : 'Disabled'}
+                                </button>
+                              </Show>
                             </td>
                             <td class="px-3 py-2.5 text-secondary">{formatUptime(wan.uptime)}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.type}</td>
@@ -1283,14 +1361,46 @@ const DeviceDetail: Component = () => {
                             <td class="px-3 py-2.5 text-primary font-mono">{wan.ipAddress}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.service}</td>
                             <td class="px-3 py-2.5 text-secondary">{wan.nat}</td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan1} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan2} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan3} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.lan4} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid1} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid2} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid3} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
-                            <td class="px-2 py-2.5 text-center"><input type="checkbox" checked={wan.ssid4} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" /></td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.lan1} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.lan1} onChange={() => handleWanTie(wan, 1, 'lan', !wan.lan1)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind L1 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.lan2} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.lan2} onChange={() => handleWanTie(wan, 2, 'lan', !wan.lan2)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind L2 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.lan3} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.lan3} onChange={() => handleWanTie(wan, 3, 'lan', !wan.lan3)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind L3 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.lan4} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.lan4} onChange={() => handleWanTie(wan, 4, 'lan', !wan.lan4)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind L4 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid1} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid1} onChange={() => handleWanTie(wan, 1, 'ssid', !wan.ssid1)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S1 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid2} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid2} onChange={() => handleWanTie(wan, 2, 'ssid', !wan.ssid2)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S2 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid3} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid3} onChange={() => handleWanTie(wan, 3, 'ssid', !wan.ssid3)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S3 to ${wan.name}`} />
+                              </Show>
+                            </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess() && wan.portParams} fallback={<input type="checkbox" checked={wan.ssid4} disabled class="accent-emerald-500 w-3.5 h-3.5 cursor-default" />}>
+                                <input type="checkbox" checked={wan.ssid4} onChange={() => handleWanTie(wan, 4, 'ssid', !wan.ssid4)} disabled={actionLoading() !== null} class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" aria-label={`Bind S4 to ${wan.name}`} />
+                              </Show>
+                            </td>
                             <td class="px-2 py-2">
                               <Show when={isFullAccess()} fallback={<span class="text-muted text-xs">-</span>}>
                                 <button
@@ -1325,12 +1435,12 @@ const DeviceDetail: Component = () => {
                     <thead class="sticky top-0 bg-base z-10">
                       <tr class="border-b-2 border-subtle bg-base">
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Name</th>
-                        <th class="text-left px-3 py-2.5 font-semibold text-primary">MAC Address</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Status</th>
+                        <th class="text-center px-2 py-2.5 font-semibold text-primary">Enable</th>
+                        <th class="text-left px-3 py-2.5 font-semibold text-primary">MAC Address</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Duplex</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary">Speed</th>
                         <th class="text-center px-2 py-2.5 font-semibold text-primary">L3</th>
-                        <th class="text-center px-2 py-2.5 font-semibold text-primary">Enable</th>
                         <th class="text-left px-3 py-2.5 font-semibold text-primary"></th>
                       </tr>
                     </thead>
@@ -1339,17 +1449,39 @@ const DeviceDetail: Component = () => {
                         {(lan) => (
                           <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
                             <td class="px-3 py-2.5 text-primary font-medium">{lan.name}</td>
-                            <td class="px-3 py-2.5 text-primary font-mono">{lan.mac}</td>
                             <td class="px-3 py-2.5">
                               <span class="inline-flex items-center gap-1.5">
                                 <span class={`w-2 h-2 rounded-full ${lan.status.toLowerCase() === 'nolink' ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                                 <span class="text-secondary">{lan.status}</span>
                               </span>
                             </td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess()} fallback={<span class={lan.enabled ? 'text-emerald-400' : 'text-muted'}>{lan.enabled ? 'Y' : '-'}</span>}>
+                                <button
+                                  onClick={() => handleLanEnable(lan.index, !lan.enabled)}
+                                  disabled={actionLoading() !== null}
+                                  class={`badge cursor-pointer ${lan.enabled ? 'badge-success' : 'badge-error'}`}
+                                  aria-label={`${lan.enabled ? 'Disable' : 'Enable'} ${lan.name}`}
+                                >
+                                  {lan.enabled ? 'Yes' : 'No'}
+                                </button>
+                              </Show>
+                            </td>
+                            <td class="px-3 py-2.5 text-primary font-mono">{lan.mac}</td>
                             <td class="px-3 py-2.5 text-secondary">{lan.duplex}</td>
                             <td class="px-3 py-2.5 text-secondary">{lan.speed}</td>
-                            <td class="px-2 py-2.5 text-center">{lan.l3Enable === '1' || lan.l3Enable === 'true' ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
-                            <td class="px-2 py-2.5 text-center">{lan.enabled ? <span class="text-emerald-400">Y</span> : <span class="text-muted">-</span>}</td>
+                            <td class="px-2 py-2.5 text-center">
+                              <Show when={isFullAccess()} fallback={<span class={lan.l3Enable === '1' || lan.l3Enable === 'true' ? 'text-emerald-400' : 'text-muted'}>{lan.l3Enable === '1' || lan.l3Enable === 'true' ? 'Y' : '-'}</span>}>
+                                <button
+                                  onClick={() => handleLanL3(lan.index, lan.l3Enable !== '1' && lan.l3Enable !== 'true')}
+                                  disabled={actionLoading() !== null}
+                                  class={`badge cursor-pointer ${lan.l3Enable === '1' || lan.l3Enable === 'true' ? 'badge-success' : 'badge-error'}`}
+                                  aria-label={`${lan.l3Enable === '1' || lan.l3Enable === 'true' ? 'Disable' : 'Enable'} L3 on ${lan.name}`}
+                                >
+                                  {lan.l3Enable === '1' || lan.l3Enable === 'true' ? 'Yes' : 'No'}
+                                </button>
+                              </Show>
+                            </td>
                             <td class="px-2 py-2">
                               <Show when={isFullAccess()} fallback={<span class="text-muted text-xs">-</span>}>
                                 <button

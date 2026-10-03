@@ -3,6 +3,11 @@ export interface WanParameter {
   value: string;
 }
 
+export interface PortParams {
+  serviceListPath: string;
+  serviceListValue: string;
+}
+
 export interface WanProfile {
   path: string;
   name: string;
@@ -24,6 +29,7 @@ export interface WanProfile {
   ssid2: boolean;
   ssid3: boolean;
   ssid4: boolean;
+  portParams?: PortParams;
 }
 
 const wanConnectionPattern = /^InternetGatewayDevice\.WANDevice\.(\d+)\.WANConnectionDevice\.(\d+)\.(WANPPPConnection|WANIPConnection)\.(\d+)(?:\.|$)/;
@@ -71,6 +77,12 @@ export function getWanProfiles(parameters: WanParameter[]): WanProfile[] {
           .some(term => p.value.toLowerCase().includes(term)));
     };
     const natValue = ownValue('NATEnabled');
+    const serviceListParam = relevant.find(p =>
+      /X_HW_SERVICELIST|X_HW_ServiceList|ServiceList|X_CT_ServiceList|X_CU_ServiceList/i.test(p.name)
+    );
+    const portParams = serviceListParam
+      ? { serviceListPath: serviceListParam.name, serviceListValue: serviceListParam.value }
+      : undefined;
     return {
       path,
       name: ownValue('Name') !== '-' ? ownValue('Name') : `WANDevice.${group.wanDevice} / WANConnectionDevice.${group.connectionDevice} / ${group.kind}.${group.instance}`,
@@ -92,6 +104,7 @@ export function getWanProfiles(parameters: WanParameter[]): WanProfile[] {
       ssid2: portBinding(2, 'ssid'),
       ssid3: portBinding(3, 'ssid'),
       ssid4: portBinding(4, 'ssid'),
+      portParams,
     };
   });
 }

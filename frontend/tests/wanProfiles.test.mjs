@@ -54,3 +54,37 @@ test('shows an object discovered before its status parameters arrive', () => {
   assert.equal(profiles[0].path, path);
   assert.equal(profiles[0].status, '-');
 });
+
+test('populates portParams when a service list parameter is present', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_SERVICELIST', value: 'lan1,lan2' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  assert.equal(profiles.length, 1);
+  assert.ok(profiles[0].portParams);
+  assert.equal(profiles[0].portParams.serviceListPath, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_SERVICELIST');
+  assert.equal(profiles[0].portParams.serviceListValue, 'lan1,lan2');
+});
+
+test('portParams is undefined when no service list parameter exists', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Enable', value: '1' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  assert.equal(profiles.length, 1);
+  assert.equal(profiles[0].portParams, undefined);
+});
+
+test('portParams picks up X_CT_ServiceList variant', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.Name', value: 'PPP' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.X_CT_ServiceList', value: 'eth1' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  assert.equal(profiles.length, 1);
+  assert.ok(profiles[0].portParams);
+  assert.equal(profiles[0].portParams.serviceListPath, 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.X_CT_ServiceList');
+  assert.equal(profiles[0].portParams.serviceListValue, 'eth1');
+});
