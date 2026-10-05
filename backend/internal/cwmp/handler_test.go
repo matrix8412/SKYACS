@@ -376,3 +376,31 @@ func TestAddObjectResponseClearsLastSentContext(t *testing.T) {
 		t.Fatalf("LastSentContext not cleared after AddObject response, got %q", session.LastSentContext)
 	}
 }
+
+func TestBuildTaskRequestSetParameterValuesUsesStringType(t *testing.T) {
+	handler := NewHandler(nil)
+	task, err := models.NewTaskWithPayload(1, models.TaskTypeSetParameterValues, map[string]string{
+		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable": "true",
+		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.SSID1Enable": "false",
+	})
+	if err != nil {
+		t.Fatalf("NewTaskWithPayload: %v", err)
+	}
+
+	request, err := handler.buildTaskRequest(task)
+	if err != nil {
+		t.Fatalf("buildTaskRequest: %v", err)
+	}
+	spv, ok := request.(*SetParameterValues)
+	if !ok {
+		t.Fatalf("expected *SetParameterValues, got %T", request)
+	}
+	if len(spv.ParameterList.Parameters) != 2 {
+		t.Fatalf("expected 2 parameters, got %d", len(spv.ParameterList.Parameters))
+	}
+	for _, p := range spv.ParameterList.Parameters {
+		if p.Type != "" {
+			t.Errorf("parameter %q: expected empty Type (xsd:string default), got %q", p.Name, p.Type)
+		}
+	}
+}

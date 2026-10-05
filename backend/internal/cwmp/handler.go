@@ -1091,6 +1091,13 @@ func (h *Handler) getNextTask(ctx context.Context, session *Session) (interface{
 		session.State = StateProcessingTasks
 		request, err := h.buildTaskRequest(task)
 		if err == nil {
+			if spv, ok := request.(*SetParameterValues); ok {
+				names := make([]string, 0, len(spv.ParameterList.Parameters))
+				for _, p := range spv.ParameterList.Parameters {
+					names = append(names, p.Name)
+				}
+				session.LastSentContext = strings.Join(names, ", ")
+			}
 			return request, nil
 		}
 		if updateErr := h.taskRepo.UpdateStatus(ctx, task.ID, models.TaskStatusFailed, nil, err.Error()); updateErr != nil {
@@ -1123,7 +1130,7 @@ func (h *Handler) buildTaskRequest(task *models.Task) (interface{}, error) {
 				spv.ParameterList.Parameters = append(spv.ParameterList.Parameters, ParameterValueStruct{
 					Name:  name,
 					Value: value,
-					Type:  taskParameterType(name),
+					Type:  "",
 				})
 			}
 			log.Printf("Sending SetParameterValues: %d params", len(spv.ParameterList.Parameters))
@@ -1164,12 +1171,6 @@ func (h *Handler) buildTaskRequest(task *models.Task) (interface{}, error) {
 	return nil, fmt.Errorf("unsupported or empty task payload for %s", task.Type)
 }
 
-func taskParameterType(name string) string {
-	if strings.Contains(name, ".X_HW_LANBIND.") && strings.HasSuffix(name, "Enable") {
-		return "boolean"
-	}
-	return ""
-}
 
 func (h *Handler) sendFault(w http.ResponseWriter, err error, request *SOAPEnvelope) {
 	fault := &SOAPFault{
