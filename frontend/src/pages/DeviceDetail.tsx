@@ -2,7 +2,7 @@ import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
 import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Settings2, Check, Download } from 'lucide-solid';
-import { api, type MetricDefinition } from '../lib/api';
+import { api, type MetricDefinition, type Task } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
 import { useFeedback } from '../components/Feedback';
@@ -68,6 +68,8 @@ const DeviceDetail: Component = () => {
   const [metricDefs] = createResource(api.getMetricDefinitions);
   const [settings] = createResource(api.getSettings);
   const [taskPage, setTaskPage] = createSignal(0);
+  const [selectedTask, setSelectedTask] = createSignal<Task | null>(null);
+  const [taskDetailTab, setTaskDetailTab] = createSignal<'requested' | 'result'>('requested');
   const { pageSize: taskPageSize, changePageSize: changeTaskPageSize } = usePageSize('device_tasks', 10);
   const handleTaskPageSizeChange = (size: number) => { changeTaskPageSize(size); setTaskPage(0); };
   const pagedTasks = createMemo(() => {
@@ -1805,13 +1807,16 @@ const DeviceDetail: Component = () => {
               <Show when={!tasks.loading} fallback={<div class="p-5 space-y-2" aria-label="Loading CPE task history"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-full" /></div>}>
               <Show when={(tasks()?.length || 0) > 0} fallback={<EmptyState compact title="No remote tasks have been queued" description="Reboot, parameter, firmware, and connection-request operations will appear here after an operator creates them." />}>
                 <div class="table-scroll">
-                  <table class="data-table w-full text-sm min-w-[680px]">
+                  <table class="data-table w-full text-sm min-w-[900px]">
                     <thead class="bg-base sticky top-0 z-10">
                       <tr class="bg-base">
                         <th class="text-left px-4 py-2 text-xs font-medium text-muted">Type</th>
                         <th class="text-left px-4 py-2 text-xs font-medium text-muted">Status</th>
                         <th class="text-left px-4 py-2 text-xs font-medium text-muted">Created</th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">Completed</th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">User</th>
                         <th class="text-left px-4 py-2 text-xs font-medium text-muted">Error</th>
+                        <th class="text-right px-4 py-2 text-xs font-medium text-muted">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1821,7 +1826,18 @@ const DeviceDetail: Component = () => {
                             <td class="px-4 py-2 text-primary">{task.type}</td>
                             <td class="px-4 py-2"><span class={`badge ${getStatusBadge(task.status)}`}>{task.status}</span></td>
                             <td class="px-4 py-2 text-muted text-xs">{formatDate(task.created_at)}</td>
+                            <td class="px-4 py-2 text-muted text-xs">{formatDate(task.completed_at)}</td>
+                            <td class="px-4 py-2 text-muted text-xs">{task.created_by || '-'}</td>
                             <td class="px-4 py-2 text-rose-400 text-xs">{task.error_message || '-'}</td>
+                            <td class="px-4 py-2 text-right">
+                              <button
+                                class="btn btn-ghost btn-xs"
+                                onClick={() => { setSelectedTask(task); setTaskDetailTab('requested'); }}
+                              >
+                                <Eye size={13} />
+                                Details
+                              </button>
+                            </td>
                           </tr>
                         )}
                       </For>
@@ -1834,6 +1850,57 @@ const DeviceDetail: Component = () => {
               </Show>
               </Show>
             </div>
+            </Show>
+
+            {/* Task Detail Dialog */}
+            <Show when={selectedTask()}>
+              <Dialog title={`Task #${selectedTask()!.id} — ${selectedTask()!.type}`} size="large" onClose={() => setSelectedTask(null)}>
+                <div class="space-y-4">
+                  <div class="grid grid-cols-2 gap-3 text-sm">
+                    <div><span class="text-muted text-xs">Status</span><div class="mt-0.5"><span class={`badge ${getStatusBadge(selectedTask()!.status)}`}>{selectedTask()!.status}</span></div></div>
+                    <div><span class="text-muted text-xs">User</span><div class="mt-0.5 text-primary">{selectedTask()!.created_by || '-'}</div></div>
+                    <div><span class="text-muted text-xs">Created</span><div class="mt-0.5 text-primary">{formatDate(selectedTask()!.created_at)}</div></div>
+                    <div><span class="text-muted text-xs">Completed</span><div class="mt-0.5 text-primary">{formatDate(selectedTask()!.completed_at)}</div></div>
+                  </div>
+                  <Show when={selectedTask()!.error_message}>
+                    <div class="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-400">{selectedTask()!.error_message}</div>
+                  </Show>
+                  <div class="border-b border-subtle flex gap-0">
+                    <button class={`px-4 py-2 text-sm font-medium border-b-2 ${taskDetailTab() === 'requested' ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-primary'}`} onClick={() => setTaskDetailTab('requested')}>Requested</button>
+                    <button class={`px-4 py-2 text-sm font-medium border-b-2 ${taskDetailTab() === 'result' ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-primary'}`} onClick={() => setTaskDetailTab('result')}>Result</button>
+                  </div>
+                  <Show when={taskDetailTab() === 'requested'}>
+                    <Show when={selectedTask()!.payload != null} fallback={<p class="text-sm text-muted">No payload for this task type.</p>}>
+                      <Show when={Array.isArray(selectedTask()!.payload)} fallback={
+                        <div class="overflow-x-auto"><table class="data-table w-full text-sm"><thead><tr><th class="text-left px-3 py-2 text-xs font-medium text-muted">Key</th><th class="text-left px-3 py-2 text-xs font-medium text-muted">Value</th></tr></thead><tbody>
+                          <For each={Object.entries(selectedTask()!.payload as Record<string, unknown>)}>
+                            {([key, value]) => (<tr class="border-t border-subtle/50"><td class="px-3 py-1.5 font-mono text-xs text-primary">{key}</td><td class="px-3 py-1.5 text-xs">{typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}</td></tr>)}
+                          </For>
+                        </tbody></table></div>
+                      }>
+                        <div class="space-y-1">
+                          <For each={selectedTask()!.payload as string[]}>
+                            {(param) => (<div class="font-mono text-xs text-primary px-3 py-1.5 bg-elevated/50 rounded">{param}</div>)}
+                          </For>
+                        </div>
+                      </Show>
+                    </Show>
+                  </Show>
+                  <Show when={taskDetailTab() === 'result'}>
+                    <Show when={selectedTask()!.result != null} fallback={<p class="text-sm text-muted">No result yet — task may still be pending.</p>}>
+                      <Show when={typeof selectedTask()!.result === 'object' && !Array.isArray(selectedTask()!.result) && selectedTask()!.result !== null} fallback={
+                        <pre class="text-xs font-mono bg-elevated/50 rounded p-3 overflow-x-auto">{JSON.stringify(selectedTask()!.result, null, 2)}</pre>
+                      }>
+                        <div class="overflow-x-auto"><table class="data-table w-full text-sm"><thead><tr><th class="text-left px-3 py-2 text-xs font-medium text-muted">Key</th><th class="text-left px-3 py-2 text-xs font-medium text-muted">Value</th></tr></thead><tbody>
+                          <For each={Object.entries(selectedTask()!.result as Record<string, unknown>)}>
+                            {([key, value]) => (<tr class="border-t border-subtle/50"><td class="px-3 py-1.5 font-mono text-xs text-primary">{key}</td><td class="px-3 py-1.5 text-xs">{typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}</td></tr>)}
+                          </For>
+                        </tbody></table></div>
+                      </Show>
+                    </Show>
+                  </Show>
+                </div>
+              </Dialog>
             </Show>
 
             <Show when={activeTab() === 'faults'}>

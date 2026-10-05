@@ -593,6 +593,9 @@ func (r *Router) handleGetParameterValues(w http.ResponseWriter, req *http.Reque
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
 	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
+	}
 
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		log.Printf("Error creating task: %v", err)
@@ -637,6 +640,9 @@ func (r *Router) handleSetParameterValues(w http.ResponseWriter, req *http.Reque
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
 	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
+	}
 
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		log.Printf("Error creating task: %v", err)
@@ -659,6 +665,9 @@ func (r *Router) handleReboot(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Error creating task payload: %v", err)
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
+	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
 	}
 
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
@@ -685,6 +694,9 @@ func (r *Router) handleFactoryReset(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Error creating task payload: %v", err)
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
+	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
 	}
 
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
@@ -1283,6 +1295,9 @@ func (r *Router) handleDownloadFirmware(w http.ResponseWriter, req *http.Request
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
 	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
+	}
 
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
@@ -1545,6 +1560,9 @@ func (r *Router) handleGetParameterValuesBySerial(w http.ResponseWriter, req *ht
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
 	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
+	}
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
@@ -1582,6 +1600,9 @@ func (r *Router) handleSetParameterValuesBySerial(w http.ResponseWriter, req *ht
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
 	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
+	}
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
@@ -1599,6 +1620,9 @@ func (r *Router) handleRebootBySerial(w http.ResponseWriter, req *http.Request) 
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
+	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
 	}
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
@@ -1620,6 +1644,9 @@ func (r *Router) handleFactoryResetBySerial(w http.ResponseWriter, req *http.Req
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
+	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
 	}
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
@@ -1684,6 +1711,9 @@ func (r *Router) handleDownloadFirmwareBySerial(w http.ResponseWriter, req *http
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")
 		return
+	}
+	if claims := auth.GetUserFromContext(req.Context()); claims != nil {
+		task.CreatedBy = claims.Username
 	}
 	if err := r.taskRepo.Create(req.Context(), task); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create task")

@@ -74,6 +74,7 @@ type Task struct {
 	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime;index;index:idx_tasks_queue,priority:3"`
 	SentAt       *time.Time `json:"sent_at,omitempty" gorm:"index:idx_tasks_status_sent,priority:2"`
 	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	CreatedBy    string     `json:"created_by,omitempty" gorm:"size:128"`
 }
 
 func (Task) TableName() string {
