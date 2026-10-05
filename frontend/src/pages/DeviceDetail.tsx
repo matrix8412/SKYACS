@@ -1916,9 +1916,19 @@ const DeviceDetail: Component = () => {
             <Show when={activeTab() === 'overview'}>
             {/* Row 6: All Parameters */}
             <div class="card overflow-hidden">
-              <div class="p-5 border-b border-subtle flex items-center justify-between">
+              <div class="p-5 border-b border-subtle flex items-center justify-between gap-4">
                 <div class="flex items-center gap-3">
                   <h2 class="text-sm font-medium text-secondary">All Parameters ({filteredParams().length})</h2>
+                  <div><label for="parameter-filter" class="block text-[10px] text-muted mb-1">Filter parameter tree</label><input
+                    id="parameter-filter"
+                    type="search"
+                    value={paramFilter()}
+                    onInput={(e) => setParamFilter(e.currentTarget.value)}
+                    placeholder="Parameter path"
+                    class="input w-64 py-1.5 text-sm"
+                  /></div>
+                </div>
+                <div class="flex items-center gap-2">
                   <button
                     type="button"
                     class="btn btn-secondary text-xs"
@@ -1939,14 +1949,6 @@ const DeviceDetail: Component = () => {
                     Export CSV
                   </button>
                 </div>
-                <div><label for="parameter-filter" class="block text-[10px] text-muted mb-1">Filter parameter tree</label><input
-                  id="parameter-filter"
-                  type="search"
-                  value={paramFilter()}
-                  onInput={(e) => setParamFilter(e.currentTarget.value)}
-                  placeholder="Parameter path"
-                  class="input w-64 py-1.5 text-sm"
-                /></div>
               </div>
               <Show when={showParamColumnSettings()}>
                 <div id="all-params-column-settings" class="flex flex-wrap gap-2 px-5 py-3 border-b border-subtle" aria-label="All Parameters column visibility">
