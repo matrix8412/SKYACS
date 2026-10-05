@@ -16,6 +16,8 @@ export interface Device {
   conn_cred_password: string | null;
   tags: string[] | null;
   last_inform: string | null;
+  last_overview_refresh: string | null;
+  last_full_refresh: string | null;
   online: boolean;
   created_at: string;
   updated_at: string;

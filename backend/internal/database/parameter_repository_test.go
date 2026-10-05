@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -94,6 +95,40 @@ func TestSensitiveParameterDetection(t *testing.T) {
 	}
 }
 
+func TestOverviewParameterSelection(t *testing.T) {
+	for _, name := range []string{
+		"InternetGatewayDevice.DeviceInfo.UpTime",
+		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress",
+		"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID",
+		"InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.Status",
+		"InternetGatewayDevice.LANDevice.1.Hosts.Host.1.MACAddress",
+		"Device.WiFi.SSID.1.SSID",
+	} {
+		if !isOverviewName(name) {
+			t.Errorf("overview parameter omitted: %s", name)
+		}
+	}
+	for _, name := range []string{"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase", "Device.DeviceInfo.SerialNumber"} {
+		if isOverviewName(name) {
+			t.Errorf("unnecessary or sensitive parameter selected: %s", name)
+		}
+	}
+}
+
+func TestOverviewSelectionKeepsWanAndLanWhenHostsAreNumerous(t *testing.T) {
+	var names []string
+	for i := 1; i <= 300; i++ {
+		names = append(names, fmt.Sprintf("InternetGatewayDevice.LANDevice.1.Hosts.Host.%d.MACAddress", i))
+	}
+	wan := "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress"
+	lan := "InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID"
+	names = append(names, wan, lan)
+	selected := selectOverviewNames(names)
+	if len(selected) != 256 || !slices.Contains(selected, wan) || !slices.Contains(selected, lan) {
+		t.Fatalf("overview selection omitted key data: count=%d", len(selected))
+	}
+}
+
 func TestDeleteStaleRemovesMissingParameters(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.AutoMigrate(&models.Device{}, &models.DeviceParameter{}); err != nil {
@@ -113,7 +148,7 @@ func TestDeleteStaleRemovesMissingParameters(t *testing.T) {
 
 	repo := NewParameterRepository(db)
 
-	// Simulate an Inform with 3 WAN connections.
+	// Simulate a full-tree fetch with 3 WAN connections.
 	initialParams := []models.DeviceParameter{
 		{DeviceID: device.ID, Name: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name", Value: "WAN1"},
 		{DeviceID: device.ID, Name: "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Name", Value: "WAN2"},
@@ -132,7 +167,7 @@ func TestDeleteStaleRemovesMissingParameters(t *testing.T) {
 		t.Fatalf("expected 3 params, got %d", len(all))
 	}
 
-	// Simulate a second Inform where WAN3 was deleted on the CPE.
+	// Simulate a second full-tree fetch where WAN3 was deleted on the CPE.
 	// Only WAN1 and WAN2 are reported.
 	currentNames := []string{
 		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name",
@@ -157,7 +192,7 @@ func TestDeleteStaleRemovesMissingParameters(t *testing.T) {
 	}
 }
 
-func TestDeleteStaleKeepsPartialInformObject(t *testing.T) {
+func TestPartialInformKeepsUnreportedParameters(t *testing.T) {
 	db := openTestDB(t)
 	if err := db.AutoMigrate(&models.Device{}, &models.DeviceParameter{}); err != nil {
 		t.Fatalf("auto-migrate: %v", err)
@@ -191,12 +226,12 @@ func TestDeleteStaleKeepsPartialInformObject(t *testing.T) {
 	// A partial Inform that reports only Name and ExternalIPAddress, omitting
 	// Enable and ConnectionStatus. The object is still present, so none of its
 	// parameters may be purged.
-	currentNames := []string{
-		obj + ".Name",
-		obj + ".ExternalIPAddress",
+	partial := []models.DeviceParameter{
+		{Name: obj + ".Name", Value: "WAN1 updated"},
+		{Name: obj + ".ExternalIPAddress", Value: "10.160.60.5"},
 	}
-	if err := repo.DeleteStale(ctx, device.ID, currentNames); err != nil {
-		t.Fatalf("DeleteStale: %v", err)
+	if err := repo.SaveInformParameters(ctx, device.ID, partial); err != nil {
+		t.Fatalf("SaveInformParameters: %v", err)
 	}
 
 	remaining, err := repo.GetByDeviceID(ctx, device.ID)

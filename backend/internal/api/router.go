@@ -852,6 +852,7 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 		"firmware_base_url": true, "connection_request_username": true,
 		"connection_request_password": true, "use_auto_conn_credentials": true,
 		"default_page_size": true, "chart_show_points": true, "app_name": true,
+		"overview_poll_interval": true, "full_tree_poll_interval": true,
 	}
 	for key, value := range settings {
 		if !allowed[key] {
@@ -891,6 +892,22 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 	if value, ok := settings["chart_show_points"]; ok && value != "true" && value != "false" {
 		respondError(w, http.StatusBadRequest, "chart_show_points must be true or false")
 		return
+	}
+	for _, interval := range []struct {
+		key string
+		min time.Duration
+		max time.Duration
+	}{
+		{"overview_poll_interval", time.Minute, 24 * time.Hour},
+		{"full_tree_poll_interval", 15 * time.Minute, 7 * 24 * time.Hour},
+	} {
+		if value, ok := settings[interval.key]; ok {
+			duration, err := time.ParseDuration(value)
+			if err != nil || duration < interval.min || duration > interval.max {
+				respondError(w, http.StatusBadRequest, interval.key+" must be a duration between "+interval.min.String()+" and "+interval.max.String())
+				return
+			}
+		}
 	}
 	if value, ok := settings["app_name"]; ok {
 		trimmed := strings.TrimSpace(value)

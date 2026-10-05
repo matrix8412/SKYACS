@@ -1006,6 +1006,8 @@ const DeviceDetail: Component = () => {
                   <div><span class="text-muted">SW Version:</span> <span class="text-primary">{d().software_version || '-'}</span></div>
                   <div><span class="text-muted">IP Address:</span> <span class="text-primary font-mono">{d().ip_address || getParamValue(['ExternalIPAddress', 'IPAddress']) || '-'}</span></div>
                   <div><span class="text-muted">Last inform:</span> <span class="text-primary">{formatDate(d().last_inform)}</span></div>
+                  <div><span class="text-muted">Overview refreshed:</span> <span class="text-primary">{formatDate(d().last_overview_refresh)}</span></div>
+                  <div><span class="text-muted">Full tree refreshed:</span> <span class="text-primary">{formatDate(d().last_full_refresh)}</span></div>
                 </div>
 
                 <div class="mt-4 pt-4 border-t border-subtle">

@@ -1,5 +1,5 @@
-import { createSignal, createEffect, createMemo, onMount, Show, For, type Component } from 'solid-js';
-import { Check, ChevronLeft, ChevronRight, Edit2, GripVertical, Plus, Settings as SettingsIcon, Settings2, Trash2, X } from 'lucide-solid';
+import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For, type Component } from 'solid-js';
+import { Check, ChevronLeft, ChevronRight, Edit2, GripVertical, MoreVertical, Plus, Settings as SettingsIcon, Settings2, Trash2, X } from 'lucide-solid';
 import { api, type ProvisioningRule } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFeedback } from '../components/Feedback';
@@ -37,6 +37,12 @@ const Provisioning: Component = () => {
   const [provRules, setProvRules] = createSignal<Awaited<ReturnType<typeof api.getProvisioningRules>> | null>(null);
   const [provError, setProvError] = createSignal<Error | null>(null);
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
+  const [showSettingsMenu, setShowSettingsMenu] = createSignal(false);
+  const [showSettingsModal, setShowSettingsModal] = createSignal(false);
+  const [settingsLoading, setSettingsLoading] = createSignal(false);
+  const [settingsSaving, setSettingsSaving] = createSignal(false);
+  const [refreshSettings, setRefreshSettings] = createSignal({ overview: '15m', full: '6h' });
+  let settingsMenu: HTMLDivElement | undefined;
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
   const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', product_classes: [] as string[], tag: '', enabled: true, description: '', add_object_path: '', order: 0, condition: '' };
@@ -97,7 +103,53 @@ const Provisioning: Component = () => {
 
   onMount(() => {
     loadProvRules();
+    const closeMenu = (event: MouseEvent) => {
+      if (!settingsMenu?.contains(event.target as Node)) setShowSettingsMenu(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowSettingsMenu(false);
+    };
+    document.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', closeOnEscape);
+    onCleanup(() => {
+      document.removeEventListener('click', closeMenu);
+      document.removeEventListener('keydown', closeOnEscape);
+    });
   });
+
+  const openRefreshSettings = async () => {
+    setShowSettingsMenu(false);
+    setSettingsLoading(true);
+    try {
+      const settings = await api.getSettings();
+      setRefreshSettings({
+        overview: settings.overview_poll_interval || '15m',
+        full: settings.full_tree_poll_interval || '6h',
+      });
+      setShowSettingsModal(true);
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not load provisioning settings', detail: (error as Error).message, persistent: true });
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const saveRefreshSettings = async () => {
+    if (settingsSaving()) return;
+    setSettingsSaving(true);
+    try {
+      await api.updateSettings({
+        overview_poll_interval: refreshSettings().overview.trim(),
+        full_tree_poll_interval: refreshSettings().full.trim(),
+      });
+      setShowSettingsModal(false);
+      notify({ tone: 'success', title: 'Provisioning settings saved' });
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not save provisioning settings', detail: (error as Error).message, persistent: true });
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   createEffect(() => {
     const cols = provColumns();
@@ -264,7 +316,20 @@ const Provisioning: Component = () => {
       <PageHeader
         title="Provisioning"
         description="Controlled CWMP parameters applied automatically to matching CPEs based on trigger phase."
-      />
+      >
+        <div class="relative" ref={settingsMenu}>
+          <button type="button" class="icon-button" aria-label="Provisioning menu" aria-haspopup="menu" aria-expanded={showSettingsMenu()} onClick={() => setShowSettingsMenu(value => !value)}>
+            <MoreVertical size={18} />
+          </button>
+          <Show when={showSettingsMenu()}>
+            <div class="absolute right-0 top-full z-50 mt-2 min-w-40 rounded border border-subtle bg-elevated p-1 shadow-xl" role="menu">
+              <button type="button" role="menuitem" class="w-full rounded px-3 py-2 text-left text-sm text-primary hover:bg-base disabled:opacity-50" disabled={settingsLoading()} onClick={openRefreshSettings}>
+                Nastavenia
+              </button>
+            </div>
+          </Show>
+        </div>
+      </PageHeader>
 
       <Show when={isFullAccess()}>
         <div class="card p-5">
@@ -443,6 +508,25 @@ const Provisioning: Component = () => {
       </Show>
 
       {/* Provisioning Modal */}
+      <Show when={showSettingsModal()}>
+        <Dialog title="Provisioning settings" description="Refresh intervals are checked whenever the CPE sends an Inform." onClose={() => setShowSettingsModal(false)} actions={<>
+          <button type="button" class="btn btn-secondary" onClick={() => setShowSettingsModal(false)} disabled={settingsSaving()}>Cancel</button>
+          <Show when={isFullAccess()}><button type="submit" form="provisioning-settings-form" class="btn btn-primary" disabled={settingsSaving()}>{settingsSaving() ? 'Saving…' : 'Save settings'}</button></Show>
+        </>}>
+          <form id="provisioning-settings-form" class="space-y-4" onSubmit={(event) => { event.preventDefault(); void saveRefreshSettings(); }}>
+            <div>
+              <label for="overview-poll-interval" class="block text-xs text-muted mb-1.5">Overview refresh interval</label>
+              <input id="overview-poll-interval" type="text" class="input w-full" value={refreshSettings().overview} onInput={(event) => setRefreshSettings(settings => ({ ...settings, overview: event.currentTarget.value }))} disabled={!isFullAccess()} required />
+              <p class="text-xs text-muted mt-1">Use m or h, from 1m to 24h. Example: 15m.</p>
+            </div>
+            <div>
+              <label for="full-tree-poll-interval" class="block text-xs text-muted mb-1.5">Full parameter tree refresh interval</label>
+              <input id="full-tree-poll-interval" type="text" class="input w-full" value={refreshSettings().full} onInput={(event) => setRefreshSettings(settings => ({ ...settings, full: event.currentTarget.value }))} disabled={!isFullAccess()} required />
+              <p class="text-xs text-muted mt-1">Use m or h, from 15m to 168h. Example: 6h.</p>
+            </div>
+          </form>
+        </Dialog>
+      </Show>
       <Show when={showProvModal()}>
         <Dialog
           title={editingProv() ? 'Edit provisioning rule' : 'Add provisioning rule'}

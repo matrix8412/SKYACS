@@ -177,6 +177,8 @@ When `CWMP_USERNAME` is configured, `CWMP_PASSWORD` is also required. Basic Auth
 
 `PARAMETER_ENCRYPTION_KEY` protects stored passwords and sensitive parameters. Back up this key together with the database. Do not replace it directly; key rotation requires a data migration and re-encryption process.
 
+On each CPE Inform, SKYACS checks the last successful refresh stored for that device. Up to 256 known overview parameters are fetched after the overview interval (default 15 minutes), and the full parameter tree after the full-tree interval (default 6 hours) or a BOOTSTRAP event. Both intervals are editable in System settings > Provisioning > Nastavenia. A full-tree fetch discovers newly added objects; overview fetches update known values. These are minimum intervals: a device that does not contact the ACS is refreshed at its next Inform. Failed or empty fetches leave the previous refresh time unchanged, so the next Inform retries. The device record shows both refresh times.
+
 ## Reverse proxy
 
 Use [setup_nginx.md](setup_nginx.md) for TLS termination, static frontend delivery, the API prefix, and firmware upload limits. For deployments using Cloudflare, read [setup_cloudflare.md](setup_cloudflare.md). Firmware endpoints must remain reachable by managed CPEs without an interactive Access login.

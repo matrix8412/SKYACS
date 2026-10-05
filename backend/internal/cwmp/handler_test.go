@@ -6,7 +6,141 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/skydashnet/skyacs/internal/database"
+	"github.com/skydashnet/skyacs/internal/models"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
+
+func TestTargetedFetchDoesNotPurgeParameters(t *testing.T) {
+	for _, scenario := range []struct {
+		name     string
+		fullTree bool
+		overview bool
+		empty    bool
+		wantMark bool
+	}{
+		{name: "targeted GPV"},
+		{name: "overview GPV", overview: true, wantMark: true},
+		{name: "empty full-tree GPV", fullTree: true, empty: true},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			// Exercise repository SQL generation without requiring a PostgreSQL server.
+			db, err := gorm.Open(postgres.Open("host=localhost user=test dbname=test"), &gorm.Config{
+				DryRun: true, DisableAutomaticPing: true, SkipDefaultTransaction: true,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var saved, purged, marked bool
+			if err := db.Callback().Create().Before("gorm:create").Register("test:device-id", func(tx *gorm.DB) {
+				if device, ok := tx.Statement.Dest.(*models.Device); ok {
+					device.ID = 1
+				}
+				if tx.Statement.Table == "device_parameters" {
+					saved = true
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Callback().Delete().Before("gorm:delete").Register("test:purge", func(tx *gorm.DB) {
+				if tx.Statement.Table == "device_parameters" {
+					purged = true
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Callback().Update().Before("gorm:update").Register("test:refresh", func(tx *gorm.DB) {
+				if tx.Statement.Table == "devices" {
+					marked = true
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			handler := NewHandler(nil)
+			handler.deviceRepo = database.NewDeviceRepository(db)
+			handler.parameterRepo = database.NewParameterRepository(db)
+			parameters := ParameterList{Parameters: []ParameterValueStruct{{Name: "InternetGatewayDevice.DeviceInfo.UpTime", Value: "1500"}}}
+			if scenario.empty {
+				parameters.Parameters = nil
+			}
+			session := handler.sessions.GetOrCreate("parameter-update", "INFORM-UPDATE")
+			session.DeviceID = 1
+			session.State = StateProcessingTasks
+			if scenario.fullTree {
+				session.AutoFetchPhase = 1
+			}
+			session.OverviewFetchActive = scenario.overview
+			_, err = handler.handleGetParameterValuesResponse(context.Background(), &GetParameterValuesResp{ParameterList: parameters}, session.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if saved == scenario.empty || purged || marked != scenario.wantMark {
+				t.Fatalf("saved=%v purged=%v marked=%v; want saved=%v purged=false marked=%v", saved, purged, marked, !scenario.empty, scenario.wantMark)
+			}
+		})
+	}
+}
+
+func TestRefreshDueSurvivesSessionChanges(t *testing.T) {
+	now := time.Now()
+	recent := now.Add(-14 * time.Minute)
+	oldOverview := now.Add(-16 * time.Minute)
+	oldFull := now.Add(-7 * time.Hour)
+	if !refreshDue(nil, 15*time.Minute) || refreshDue(&recent, 15*time.Minute) ||
+		!refreshDue(&oldOverview, 15*time.Minute) || refreshDue(&oldOverview, 6*time.Hour) ||
+		!refreshDue(&oldFull, 6*time.Hour) {
+		t.Fatal("refresh interval decision is incorrect")
+	}
+}
+
+func TestRefreshIntervalsLoadSavedSettings(t *testing.T) {
+	db, err := gorm.Open(postgres.Open("host=localhost user=test dbname=test"), &gorm.Config{
+		DryRun: true, DisableAutomaticPing: true, SkipDefaultTransaction: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Callback().Query().After("gorm:query").Register("test:settings", func(tx *gorm.DB) {
+		if settings, ok := tx.Statement.Dest.(*[]database.Setting); ok {
+			*settings = []database.Setting{
+				{Key: "overview_poll_interval", Value: "30m"},
+				{Key: "full_tree_poll_interval", Value: "12h"},
+			}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	handler := NewHandler(nil)
+	handler.settingsRepo = database.NewSettingsRepository(db)
+	overview, full := handler.refreshIntervals(context.Background())
+	if overview != 30*time.Minute || full != 12*time.Hour {
+		t.Fatalf("saved intervals were not applied: overview=%s full=%s", overview, full)
+	}
+}
+
+func TestOverviewFetchUsesKnownParameterNames(t *testing.T) {
+	handler := NewHandler(nil)
+	session := handler.sessions.GetOrCreate("overview-test", "SERIAL")
+	session.State = StateInformReceived
+	session.DataModelRoot = "InternetGatewayDevice."
+	session.OverviewFetchReady = true
+	session.OverviewFetchParams = []string{"InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID"}
+	request, _, err := handler.handleEmptyPost(context.Background(), session.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gpv, ok := request.(*GetParameterValues)
+	if !ok || len(gpv.ParameterNames) != 1 || gpv.ParameterNames[0] != session.OverviewFetchParams[0] {
+		t.Fatalf("unexpected overview fetch: %#v", request)
+	}
+	_, err = handler.handleFault(context.Background(), &SOAPFault{FaultCode: "Client", FaultString: "failed"}, session.ID)
+	if err != nil || session.OverviewFetchActive {
+		t.Fatalf("failed overview fetch remained active: %v", err)
+	}
+}
 
 func TestInformIsAcknowledgedBeforeACSRequest(t *testing.T) {
 	handler := NewHandler(nil)

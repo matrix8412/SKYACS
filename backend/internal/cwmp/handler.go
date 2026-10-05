@@ -22,19 +22,22 @@ import (
 )
 
 type Handler struct {
-	sessions           *SessionManager
-	deviceRepo         *database.DeviceRepository
-	taskRepo           *database.TaskRepository
-	parameterRepo      *database.ParameterRepository
-	provisioningRepo   *database.ProvisioningRepository
-	faultRepo          *database.FaultRepository
-	blockedRepo        *database.BlockedDeviceRepository
-	metricRepo         *database.MetricRepository
-	metricPollInterval time.Duration
-	cwmpUsername       string
-	cwmpPassword       string
-	allowedNetworks    []*net.IPNet
-	trustedProxies     []*net.IPNet
+	sessions             *SessionManager
+	deviceRepo           *database.DeviceRepository
+	taskRepo             *database.TaskRepository
+	parameterRepo        *database.ParameterRepository
+	provisioningRepo     *database.ProvisioningRepository
+	faultRepo            *database.FaultRepository
+	blockedRepo          *database.BlockedDeviceRepository
+	metricRepo           *database.MetricRepository
+	settingsRepo         *database.SettingsRepository
+	metricPollInterval   time.Duration
+	overviewPollInterval time.Duration
+	fullPollInterval     time.Duration
+	cwmpUsername         string
+	cwmpPassword         string
+	allowedNetworks      []*net.IPNet
+	trustedProxies       []*net.IPNet
 }
 
 func NewHandler(db *gorm.DB) *Handler {
@@ -45,6 +48,7 @@ func NewHandler(db *gorm.DB) *Handler {
 	var faultRepo *database.FaultRepository
 	var blockedRepo *database.BlockedDeviceRepository
 	var metricRepo *database.MetricRepository
+	var settingsRepo *database.SettingsRepository
 
 	if db != nil {
 		deviceRepo = database.NewDeviceRepository(db)
@@ -54,6 +58,7 @@ func NewHandler(db *gorm.DB) *Handler {
 		faultRepo = database.NewFaultRepository(db)
 		blockedRepo = database.NewBlockedDeviceRepository(db)
 		metricRepo = database.NewMetricRepository(db)
+		settingsRepo = database.NewSettingsRepository(db)
 	}
 
 	pollInterval := 15 * time.Minute
@@ -62,21 +67,23 @@ func NewHandler(db *gorm.DB) *Handler {
 			pollInterval = d
 		}
 	}
-
 	return &Handler{
-		sessions:           NewSessionManager(2 * time.Minute),
-		deviceRepo:         deviceRepo,
-		taskRepo:           taskRepo,
-		parameterRepo:      parameterRepo,
-		provisioningRepo:   provisioningRepo,
-		faultRepo:          faultRepo,
-		blockedRepo:        blockedRepo,
-		metricRepo:         metricRepo,
-		metricPollInterval: pollInterval,
-		cwmpUsername:       os.Getenv("CWMP_USERNAME"),
-		cwmpPassword:       os.Getenv("CWMP_PASSWORD"),
-		allowedNetworks:    parseAllowedNetworks(os.Getenv("CWMP_ALLOWED_CIDRS")),
-		trustedProxies:     parseAllowedNetworks(os.Getenv("CWMP_TRUSTED_PROXY_CIDRS")),
+		sessions:             NewSessionManager(2 * time.Minute),
+		deviceRepo:           deviceRepo,
+		taskRepo:             taskRepo,
+		parameterRepo:        parameterRepo,
+		provisioningRepo:     provisioningRepo,
+		faultRepo:            faultRepo,
+		blockedRepo:          blockedRepo,
+		metricRepo:           metricRepo,
+		settingsRepo:         settingsRepo,
+		metricPollInterval:   pollInterval,
+		overviewPollInterval: 15 * time.Minute,
+		fullPollInterval:     6 * time.Hour,
+		cwmpUsername:         os.Getenv("CWMP_USERNAME"),
+		cwmpPassword:         os.Getenv("CWMP_PASSWORD"),
+		allowedNetworks:      parseAllowedNetworks(os.Getenv("CWMP_ALLOWED_CIDRS")),
+		trustedProxies:       parseAllowedNetworks(os.Getenv("CWMP_TRUSTED_PROXY_CIDRS")),
 	}
 }
 
@@ -272,18 +279,17 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 		}
 
 		if h.parameterRepo != nil && deviceID > 0 && len(inform.ParameterList.Parameters) > 0 {
+			// Inform is a partial update, not an inventory of the parameter tree.
 			paramsToSave := make([]models.DeviceParameter, 0, len(inform.ParameterList.Parameters))
-			currentNames := make([]string, 0, len(inform.ParameterList.Parameters))
 			for _, parameter := range inform.ParameterList.Parameters {
 				paramsToSave = append(paramsToSave, models.DeviceParameter{
 					DeviceID: deviceID,
 					Name:     parameter.Name,
 					Value:    parameter.Value,
 				})
-				currentNames = append(currentNames, parameter.Name)
 			}
 			log.Printf("Inform from %s carries %d parameters", inform.DeviceId.SerialNumber, len(inform.ParameterList.Parameters))
-			if err := h.parameterRepo.SaveInformParameters(ctx, deviceID, paramsToSave, currentNames); err != nil {
+			if err := h.parameterRepo.SaveInformParameters(ctx, deviceID, paramsToSave); err != nil {
 				log.Printf("Error saving Inform parameters: %v", err)
 			}
 		}
@@ -404,6 +410,7 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	}
 
 	session := h.sessions.GetOrCreate(remoteAddr, inform.DeviceId.SerialNumber)
+	overviewInterval, fullInterval := h.refreshIntervals(ctx)
 	session.mu.Lock()
 	isNewSession := session.State == StateWaitingInform
 	session.State = StateInformReceived
@@ -425,10 +432,30 @@ func (h *Handler) handleInform(ctx context.Context, envelope *SOAPEnvelope, remo
 	if sessionImmediateEval {
 		h.evaluateConditionalRules(session, h.buildDeviceAttrs(ctx, deviceID))
 	}
-	// Full-tree discovery on BOOTSTRAP or on a brand-new session (e.g. after
-	// ACS restart) so WAN/WiFi/health data is always available. PERIODIC
-	// informs on an existing session stay cheap for large fleets.
-	session.AutoFetchReady = hasBootstrap || isNewSession
+	// The database timestamps survive CWMP session expiry and ACS restarts.
+	// A new session alone must not force a full-tree read.
+	session.AutoFetchReady = hasBootstrap
+	session.OverviewFetchReady = false
+	session.OverviewFetchActive = false
+	session.OverviewFetchParams = nil
+	if h.deviceRepo == nil {
+		session.AutoFetchReady = session.AutoFetchReady || isNewSession
+	} else if deviceID > 0 {
+		stored, err := h.deviceRepo.GetBySerial(ctx, inform.DeviceId.SerialNumber)
+		if err != nil {
+			log.Printf("Error loading refresh times for %s: %v", inform.DeviceId.SerialNumber, err)
+		} else if stored != nil {
+			session.AutoFetchReady = session.AutoFetchReady || refreshDue(stored.LastFullRefresh, fullInterval)
+			if !session.AutoFetchReady && refreshDue(stored.LastOverviewRefresh, overviewInterval) && h.parameterRepo != nil {
+				if names, err := h.parameterRepo.OverviewNames(ctx, deviceID); err != nil {
+					log.Printf("Error loading overview parameters for %s: %v", inform.DeviceId.SerialNumber, err)
+				} else if len(names) > 0 {
+					session.OverviewFetchReady = true
+					session.OverviewFetchParams = names
+				}
+			}
+		}
+	}
 	// Active metric polling: schedule a GPV fetch if the interval has elapsed.
 	if h.metricRepo != nil && deviceID > 0 && h.metricPollInterval > 0 {
 		if time.Since(session.LastMetricFetch) >= h.metricPollInterval {
@@ -450,6 +477,29 @@ func hasEvent(inform *Inform, code string) bool {
 		}
 	}
 	return false
+}
+
+func refreshDue(last *time.Time, interval time.Duration) bool {
+	return last == nil || time.Since(*last) >= interval
+}
+
+func (h *Handler) refreshIntervals(ctx context.Context) (time.Duration, time.Duration) {
+	overview, full := h.overviewPollInterval, h.fullPollInterval
+	if h.settingsRepo == nil {
+		return overview, full
+	}
+	values, err := h.settingsRepo.GetValues(ctx, "overview_poll_interval", "full_tree_poll_interval")
+	if err != nil {
+		log.Printf("Error loading provisioning refresh intervals: %v", err)
+		return overview, full
+	}
+	if value, err := time.ParseDuration(values["overview_poll_interval"]); err == nil && value >= time.Minute && value <= 24*time.Hour {
+		overview = value
+	}
+	if value, err := time.ParseDuration(values["full_tree_poll_interval"]); err == nil && value >= 15*time.Minute && value <= 7*24*time.Hour {
+		full = value
+	}
+	return overview, full
 }
 
 func addObjectForPath(path string) *AddObject {
@@ -500,10 +550,19 @@ func (h *Handler) handleEmptyPost(ctx context.Context, sessionID string) (interf
 	}
 	if session.AutoFetchReady {
 		session.AutoFetchReady = false
+		session.OverviewFetchReady = false
+		session.MetricFetchReady = false
 		session.AutoFetchPhase = 1
 		session.State = StateProcessingTasks
 		session.LastSentContext = session.DataModelRoot
 		return &GetParameterValues{ParameterNames: []string{session.DataModelRoot}}, namespace, nil
+	}
+	if session.OverviewFetchReady {
+		session.OverviewFetchReady = false
+		session.OverviewFetchActive = true
+		session.State = StateProcessingTasks
+		session.LastSentContext = strings.Join(session.OverviewFetchParams, ", ")
+		return &GetParameterValues{ParameterNames: session.OverviewFetchParams}, namespace, nil
 	}
 	if session.MetricFetchReady {
 		session.MetricFetchReady = false
@@ -540,10 +599,31 @@ func (h *Handler) handleGetParameterValuesResponse(ctx context.Context, resp *Ge
 				Value:    p.Value,
 			})
 		}
-		if err := h.parameterRepo.UpsertMany(ctx, session.DeviceID, params); err != nil {
+		fullTree := session.AutoFetchPhase == 1 && session.CurrentTaskID == 0 && len(params) > 0
+		var saveErr error
+		if fullTree {
+			saveErr = h.parameterRepo.SaveFullTreeParameters(ctx, session.DeviceID, params)
+		} else {
+			saveErr = h.parameterRepo.UpsertMany(ctx, session.DeviceID, params)
+		}
+		if err := saveErr; err != nil {
 			log.Printf("Error saving parameters: %v", err)
 		} else {
 			log.Printf("Saved %d parameters for device %d (serial: %s)", len(params), session.DeviceID, session.SerialNumber)
+			if h.deviceRepo != nil {
+				if err := h.deviceRepo.UpdateFromParameters(ctx, session.DeviceID, ExtractImportantParameters(resp.ParameterList.Parameters)); err != nil {
+					log.Printf("Error updating device details from parameters: %v", err)
+				}
+			}
+			if fullTree && h.deviceRepo != nil {
+				if err := h.deviceRepo.MarkFullRefresh(ctx, session.DeviceID); err != nil {
+					log.Printf("Error recording full-tree refresh: %v", err)
+				}
+			} else if session.OverviewFetchActive && len(params) > 0 && h.deviceRepo != nil {
+				if err := h.deviceRepo.MarkOverviewRefresh(ctx, session.DeviceID); err != nil {
+					log.Printf("Error recording overview refresh: %v", err)
+				}
+			}
 		}
 	}
 
@@ -577,6 +657,10 @@ func (h *Handler) handleGetParameterValuesResponse(ctx context.Context, resp *Ge
 
 	if session.AutoFetchPhase > 0 {
 		return h.continueAutoFetch(session)
+	}
+	if session.OverviewFetchActive {
+		session.OverviewFetchActive = false
+		return h.getNextTask(ctx, session)
 	}
 	if session.CurrentTaskID > 0 && h.taskRepo != nil {
 		result := make(map[string]string)
@@ -957,6 +1041,10 @@ func (h *Handler) handleFault(ctx context.Context, fault *SOAPFault, remoteAddr 
 		if session.AutoFetchPhase > 0 {
 			log.Printf("Auto-fetch phase %d failed, continuing to next phase", session.AutoFetchPhase)
 			return h.continueAutoFetch(session)
+		}
+		if session.OverviewFetchActive {
+			session.OverviewFetchActive = false
+			return h.getNextTask(ctx, session)
 		}
 
 		if session.CurrentTaskID > 0 && h.taskRepo != nil {

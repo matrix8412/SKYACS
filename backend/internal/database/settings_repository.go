@@ -71,6 +71,18 @@ func (r *SettingsRepository) Get(ctx context.Context, key string) (*Setting, err
 	return &s, nil
 }
 
+func (r *SettingsRepository) GetValues(ctx context.Context, keys ...string) (map[string]string, error) {
+	var settings []Setting
+	if err := r.db.WithContext(ctx).Where("key IN ?", keys).Find(&settings).Error; err != nil {
+		return nil, err
+	}
+	values := make(map[string]string, len(settings))
+	for _, setting := range settings {
+		values[setting.Key] = setting.Value
+	}
+	return values, nil
+}
+
 func (r *SettingsRepository) SetMultiple(ctx context.Context, settings map[string]string) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for key, value := range settings {

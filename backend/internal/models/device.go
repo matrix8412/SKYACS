@@ -20,6 +20,8 @@ type Device struct {
 	ConnCredPassword     *string           `json:"conn_cred_password" gorm:"column:conn_cred_password"`
 	Tags                 []string          `json:"tags" gorm:"type:jsonb;serializer:json"`
 	LastInform           *time.Time        `json:"last_inform" gorm:"index:idx_devices_online_last_inform,priority:2"`
+	LastOverviewRefresh  *time.Time        `json:"last_overview_refresh"`
+	LastFullRefresh      *time.Time        `json:"last_full_refresh"`
 	Online               bool              `json:"online" gorm:"default:false;index:idx_devices_online_last_inform,priority:1"`
 	CreatedAt            time.Time         `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt            time.Time         `json:"updated_at" gorm:"autoUpdateTime"`

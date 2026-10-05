@@ -22,15 +22,53 @@ func (r *DeviceRepository) UpsertFromInform(ctx context.Context, device *models.
 	now := time.Now()
 	device.LastInform = &now
 	device.Online = true
+	updates := []string{"last_inform", "online", "updated_at"}
+	for _, field := range []struct {
+		column string
+		value  *string
+	}{
+		{"manufacturer", device.Manufacturer}, {"product_class", device.ProductClass},
+		{"hardware_version", device.HardwareVersion}, {"software_version", device.SoftwareVersion},
+		{"ip_address", device.IPAddress}, {"connection_request_url", device.ConnectionRequestURL},
+	} {
+		if field.value != nil && *field.value != "" {
+			updates = append(updates, field.column)
+		}
+	}
 
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "serial_number"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"manufacturer", "product_class", "hardware_version",
-			"software_version", "ip_address", "connection_request_url",
-			"last_inform", "online", "updated_at",
-		}),
+		Columns:   []clause.Column{{Name: "serial_number"}},
+		DoUpdates: clause.AssignmentColumns(updates),
 	}).Create(device).Error
+}
+
+func (r *DeviceRepository) MarkOverviewRefresh(ctx context.Context, deviceID int64) error {
+	return r.db.WithContext(ctx).Model(&models.Device{}).Where("id = ?", deviceID).
+		Update("last_overview_refresh", time.Now()).Error
+}
+
+func (r *DeviceRepository) MarkFullRefresh(ctx context.Context, deviceID int64) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).Model(&models.Device{}).Where("id = ?", deviceID).
+		Updates(map[string]interface{}{"last_overview_refresh": now, "last_full_refresh": now}).Error
+}
+
+func (r *DeviceRepository) UpdateFromParameters(ctx context.Context, deviceID int64, params map[string]string) error {
+	columns := map[string]string{
+		"ModelName": "model_name", "HardwareVersion": "hardware_version",
+		"SoftwareVersion": "software_version", "ExternalIPAddress": "ip_address",
+		"ConnectionRequestURL": "connection_request_url",
+	}
+	updates := make(map[string]interface{})
+	for key, column := range columns {
+		if value := params[key]; value != "" {
+			updates[column] = value
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Model(&models.Device{}).Where("id = ?", deviceID).Updates(updates).Error
 }
 
 func (r *DeviceRepository) GetBySerial(ctx context.Context, serialNumber string) (*models.Device, error) {

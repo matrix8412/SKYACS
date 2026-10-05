@@ -124,19 +124,29 @@ func upsertMany(db *gorm.DB, deviceID int64, params []models.DeviceParameter) er
 	}).CreateInBatches(&params, 500).Error
 }
 
-// SaveInformParameters atomically upserts the Inform's parameters and purges
-// parameters whose owning object is no longer present. Running both in a single
-// transaction prevents a concurrent read from observing a half-applied state
-// (e.g. the upsert committed but the stale purge not yet, or vice versa).
-func (r *ParameterRepository) SaveInformParameters(ctx context.Context, deviceID int64, params []models.DeviceParameter, currentNames []string) error {
+// SaveInformParameters atomically applies the partial Inform without a purge.
+func (r *ParameterRepository) SaveInformParameters(ctx context.Context, deviceID int64, params []models.DeviceParameter) error {
 	if len(params) == 0 {
 		return nil
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return upsertMany(tx, deviceID, params)
+	})
+}
+
+func (r *ParameterRepository) SaveFullTreeParameters(ctx context.Context, deviceID int64, params []models.DeviceParameter) error {
+	if len(params) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(params))
+	for _, param := range params {
+		names = append(names, param.Name)
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := upsertMany(tx, deviceID, params); err != nil {
 			return err
 		}
-		return deleteStale(tx, deviceID, currentNames)
+		return deleteStale(tx, deviceID, names)
 	})
 }
 
@@ -160,13 +170,8 @@ func (r *ParameterRepository) UpsertWritable(ctx context.Context, deviceID int64
 	}).CreateInBatches(&entries, 500).Error
 }
 
-// DeleteStale removes parameters for a device whose owning object is no longer
-// present in the current Inform. The purge is object-scoped rather than
-// name-scoped: a parameter group (e.g. a WAN connection) is only deleted when
-// NO parameter of that object appears in the Inform. This prevents a partial
-// Inform — which may omit some leaf parameters of a still-present object —
-// from wiping still-valid rows, while still purging objects genuinely removed
-// on the CPE.
+// DeleteStale removes parameters absent from a successful full-tree fetch.
+// Never call it with a partial Inform or a targeted parameter response.
 func (r *ParameterRepository) DeleteStale(ctx context.Context, deviceID int64, currentNames []string) error {
 	return deleteStale(r.db.WithContext(ctx), deviceID, currentNames)
 }
@@ -175,24 +180,9 @@ func deleteStale(db *gorm.DB, deviceID int64, currentNames []string) error {
 	if len(currentNames) == 0 {
 		return nil
 	}
-	currentObjects := make([]string, 0, len(currentNames))
-	for _, name := range currentNames {
-		currentObjects = append(currentObjects, objectPrefix(name))
-	}
 	return db.
-		Where("device_id = ? AND LEFT(name, LENGTH(name) - POSITION('.' IN REVERSE(name))) NOT IN ?", deviceID, currentObjects).
+		Where("device_id = ? AND name NOT IN ?", deviceID, currentNames).
 		Delete(&models.DeviceParameter{}).Error
-}
-
-// objectPrefix returns the owning object path of a parameter name, i.e. the
-// name with its final leaf segment removed. "a.b.c" -> "a.b". Names without a
-// dot are returned unchanged.
-func objectPrefix(name string) string {
-	idx := strings.LastIndex(name, ".")
-	if idx <= 0 {
-		return name
-	}
-	return name[:idx]
 }
 
 func (r *ParameterRepository) GetByDeviceID(ctx context.Context, deviceID int64) ([]models.DeviceParameter, error) {
@@ -207,6 +197,72 @@ func (r *ParameterRepository) GetByDeviceID(ctx context.Context, deviceID int64)
 		return nil, err
 	}
 	return params, nil
+}
+
+// OverviewNames returns known parameters used by the device overview. New
+// objects are discovered by the less frequent full-tree fetch.
+func (r *ParameterRepository) OverviewNames(ctx context.Context, deviceID int64) ([]string, error) {
+	var names []string
+	err := r.db.WithContext(ctx).Model(&models.DeviceParameter{}).
+		Where("device_id = ? AND (name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ? OR name LIKE ?)",
+			deviceID, "InternetGatewayDevice.DeviceInfo.%", "InternetGatewayDevice.WANDevice.%",
+			"InternetGatewayDevice.LANDevice.%", "Device.DeviceInfo.%", "Device.WiFi.%", "Device.IP.%",
+			"%RXPower%", "%RxPower%", "%OpticalPower%", "%Temperature%").
+		Order("name").Pluck("name", &names).Error
+	if err != nil {
+		return nil, err
+	}
+	return selectOverviewNames(names), nil
+}
+
+func selectOverviewNames(names []string) []string {
+	var buckets [4][]string
+	for _, name := range names {
+		if !isOverviewName(name) {
+			continue
+		}
+		bucket := 0
+		switch {
+		case strings.Contains(name, ".Hosts.") || strings.Contains(name, ".AssociatedDevice."):
+			bucket = 3
+		case strings.Contains(name, ".WANDevice.") || strings.HasPrefix(name, "Device.IP."):
+			bucket = 1
+		case strings.Contains(name, ".LANDevice.") || strings.HasPrefix(name, "Device.WiFi."):
+			bucket = 2
+		}
+		buckets[bucket] = append(buckets[bucket], name)
+	}
+	selected := make([]string, 0, min(len(names), 256))
+	for index := 0; len(selected) < 256; index++ {
+		added := false
+		for _, bucket := range buckets {
+			if index < len(bucket) && len(selected) < 256 {
+				selected = append(selected, bucket[index])
+				added = true
+			}
+		}
+		if !added {
+			break
+		}
+	}
+	return selected
+}
+
+func isOverviewName(name string) bool {
+	if IsSensitiveParameterName(name) {
+		return false
+	}
+	for _, marker := range []string{"RXPower", "RxPower", "OpticalPower", "Temperature", "VLAN", "ServiceList", "SERVICELIST", "Binding", "BindList", "PortMapping", "AssociatedDevice."} {
+		if strings.Contains(name, marker) {
+			return true
+		}
+	}
+	for _, suffix := range []string{"UpTime", "Uptime", "SoftwareVersion", "HardwareVersion", "ModelName", "ExternalIPAddress", "ConnectionStatus", "Status", "Enable", "Name", "SSID", "NATEnabled", "ConnectionType", "MACAddress", "IPAddress", "IPv6Address", "HostName", "Layer2Interface", "InterfaceType", "Channel", "Standard", "BeaconType", "WPAEncryptionModes", "OperatingFrequencyBand", "MaxBitRate", "X_HW_Speed", "X_HW_DuplexMode", "X_HW_L3Enable", "X_HW_RSSI"} {
+		if strings.HasSuffix(name, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func decryptParameters(params []models.DeviceParameter) error {

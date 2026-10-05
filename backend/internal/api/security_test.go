@@ -5,9 +5,26 @@ import (
 	"encoding/hex"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestRefreshIntervalSettingsRejectInvalidValues(t *testing.T) {
+	for _, body := range []string{
+		`{"overview_poll_interval":"0m"}`,
+		`{"overview_poll_interval":"25h"}`,
+		`{"full_tree_poll_interval":"8d"}`,
+		`{"full_tree_poll_interval":"bad"}`,
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest("PUT", "/settings", strings.NewReader(body))
+		(&Router{}).handleUpdateSettings(recorder, request)
+		if recorder.Code != 400 {
+			t.Errorf("settings %s returned %d, want 400", body, recorder.Code)
+		}
+	}
+}
 
 func TestSameOrigin(t *testing.T) {
 	t.Setenv("TRUSTED_PROXY_CIDRS", "127.0.0.1/32")

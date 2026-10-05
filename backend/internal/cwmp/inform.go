@@ -85,6 +85,7 @@ func ExtractImportantParameters(params []ParameterValueStruct) map[string]string
 
 	parameterKeys := map[string]string{
 		"InternetGatewayDevice.DeviceInfo.SoftwareVersion":            "SoftwareVersion",
+		"InternetGatewayDevice.DeviceInfo.ModelName":                  "ModelName",
 		"InternetGatewayDevice.DeviceInfo.HardwareVersion":            "HardwareVersion",
 		"InternetGatewayDevice.DeviceInfo.UpTime":                     "UpTime",
 		"InternetGatewayDevice.ManagementServer.ConnectionRequestURL": "ConnectionRequestURL",
@@ -99,6 +100,7 @@ func ExtractImportantParameters(params []ParameterValueStruct) map[string]string
 		"InternetGatewayDevice.WANDevice.1.WANConnectionDevice.3.WANPPPConnection.1.ExternalIPAddress": "ExternalIPAddress",
 		// Device:2 data model
 		"Device.DeviceInfo.SoftwareVersion":            "SoftwareVersion",
+		"Device.DeviceInfo.ModelName":                  "ModelName",
 		"Device.DeviceInfo.HardwareVersion":            "HardwareVersion",
 		"Device.ManagementServer.ConnectionRequestURL": "ConnectionRequestURL",
 	}
