@@ -112,7 +112,7 @@ func (r *ProvisioningRepository) Update(ctx context.Context, rule *models.Provis
 		return tx.Model(&models.ProvisioningRule{}).Where("id = ?", rule.ID).Updates(map[string]interface{}{
 			"parameter_name": rule.ParameterName, "parameter_value": value, "parameter_type": rule.ParameterType,
 			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "product_classes": productClassesJSON, "tag": rule.Tag, "enabled": rule.Enabled, "description": rule.Description,
-			"add_object_path": rule.AddObjectPath, "order": rule.Order,
+			"add_object_path": rule.AddObjectPath, "order": rule.Order, "condition": rule.Condition,
 			"version": gorm.Expr("version + 1"),
 		}).Error
 	})
