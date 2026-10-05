@@ -78,7 +78,7 @@ const Provisioning: Component = () => {
       case 'parameter': return rule.add_object_path || rule.parameter_name || '';
       case 'value': return rule.add_object_path ? '' : rule.parameter_value || '';
       case 'manufacturer': return rule.manufacturer || '';
-      case 'product_class': return rule.product_class || '';
+      case 'product_class': return (rule.product_classes && rule.product_classes.length > 0) ? rule.product_classes.join(', ') : (rule.product_class || '');
       case 'tag': return rule.tag || '';
       case 'phase': return rule.phase || '';
       case 'status': return rule.enabled ? 'Active' : 'Disabled';
@@ -458,7 +458,15 @@ const Provisioning: Component = () => {
                           <td class="py-2 text-secondary text-xs">{p.manufacturer || '—'}</td>
                         </Show>
                         <Show when={visibleProvColumns().some(c => c.id === 'product_class')}>
-                          <td class="py-2 text-secondary text-xs">{p.product_class || '—'}</td>
+                          <td class="py-2 text-secondary text-xs">
+                            {(p.product_classes && p.product_classes.length > 0) ? (
+                              <span class="flex flex-wrap gap-1">
+                                <For each={p.product_classes}>
+                                  {(pc) => <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400">{pc}</span>}
+                                </For>
+                              </span>
+                            ) : (p.product_class || '—')}
+                          </td>
                         </Show>
                         <Show when={visibleProvColumns().some(c => c.id === 'tag')}>
                           <td class="py-2 text-secondary text-xs">{p.tag ? <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400">{p.tag}</span> : '—'}</td>
