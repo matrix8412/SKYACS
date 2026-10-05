@@ -70,6 +70,14 @@
 [data-theme="light"] .border-zinc-600 { border-color: rgb(var(--border-default)); }
 [data-theme="light"] .hover\:bg-zinc-700:hover { background-color: rgb(var(--bg-hover)); }
 
+/* Light mode: darken 300-level badge text and boost faint badge backgrounds */
+[data-theme="light"] .text-sky-300 { color: rgb(3 105 161); }
+[data-theme="light"] .text-amber-300 { color: rgb(180 83 9); }
+[data-theme="light"] .bg-sky-500\/15 { background-color: rgb(3 105 161 / 0.1); }
+[data-theme="light"] .bg-amber-500\/15 { background-color: rgb(180 83 9 / 0.1); }
+[data-theme="light"] .hover\:text-sky-100:hover { color: rgb(3 105 161); }
+[data-theme="light"] .hover\:text-amber-100:hover { color: rgb(180 83 9); }
+
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
 body {
