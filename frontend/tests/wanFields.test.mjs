@@ -120,6 +120,24 @@ test('validateFields detects invalid Multicast VLAN (too large)', () => {
   assert.ok(errors[prefix + 'X_HW_MultiCastVLAN']);
 });
 
+test('validateFields allows empty Multicast VLAN', () => {
+  const params = makeParams({ X_HW_MultiCastVLAN: '' });
+  const errors = validateFields(params, prefix, {});
+  assert.equal(errors[prefix + 'X_HW_MultiCastVLAN'], undefined);
+});
+
+test('validateFields allows empty VLAN ID', () => {
+  const params = makeParams({ X_HW_VLAN: '' });
+  const errors = validateFields(params, prefix, {});
+  assert.equal(errors[prefix + 'X_HW_VLAN'], undefined);
+});
+
+test('validateFields allows empty MTU', () => {
+  const params = makeParams({ MaxMTUSize: '' });
+  const errors = validateFields(params, prefix, {});
+  assert.equal(errors[prefix + 'MaxMTUSize'], undefined);
+});
+
 test('validateFields uses edited value over original', () => {
   const params = makeParams({ MaxMTUSize: '1492' });
   const errors = validateFields(params, prefix, { [prefix + 'MaxMTUSize']: '100' });

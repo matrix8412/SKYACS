@@ -38,7 +38,10 @@ const WanSettingsModal: Component<WanSettingsModalProps> = (props) => {
   const getOriginalValue = (field: WanFieldDef): string => {
     const suffix = resolveFieldSuffix(field.suffixes);
     if (!suffix) return '';
-    return props.parameters.find(p => p.name === prefix + suffix)?.value ?? '';
+    const raw = props.parameters.find(p => p.name === prefix + suffix)?.value ?? '';
+    // Device reports 0xFFFFFFFF (max uint32) or -1 for unset number fields
+    if (field.type === 'number' && (raw === '4294967295' || raw === '-1')) return '';
+    return raw;
   };
 
   const isWritable = (field: WanFieldDef): boolean => {
