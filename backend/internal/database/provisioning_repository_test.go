@@ -103,6 +103,85 @@ func TestListPendingForDeviceTagFilter(t *testing.T) {
 	})
 }
 
+// TestUpdateProductClasses verifies that the Update method correctly serializes
+// the ProductClasses []string field to jsonb when using a map-based GORM update.
+func TestUpdateProductClasses(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	provRepo := NewProvisioningRepository(db)
+
+	serial := fmt.Sprintf("test-pc-%d", time.Now().UnixNano())
+	device := &models.Device{SerialNumber: serial, OUI: "00:00:02"}
+	if err := db.Create(device).Error; err != nil {
+		t.Fatalf("create device: %v", err)
+	}
+
+	// Create a rule with initial product classes.
+	initial := []string{"class-a", "class-b"}
+	rule := &models.ProvisioningRule{
+		ParameterName:  "Test.Update.PC",
+		ParameterValue: "initial",
+		ParameterType:  "string",
+		Phase:          "bootstrap",
+		ProductClasses: initial,
+		Enabled:        true,
+		Order:          0,
+	}
+	if err := provRepo.Create(ctx, rule); err != nil {
+		t.Fatalf("create rule: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Delete(&models.ProvisioningRule{}, rule.ID)
+		_ = db.Delete(&models.Device{}, device.ID)
+	})
+
+	// Verify initial state.
+	var loaded models.ProvisioningRule
+	if err := db.First(&loaded, rule.ID).Error; err != nil {
+		t.Fatalf("load rule: %v", err)
+	}
+	if len(loaded.ProductClasses) != 2 || loaded.ProductClasses[0] != "class-a" || loaded.ProductClasses[1] != "class-b" {
+		t.Fatalf("initial ProductClasses = %v, want %v", loaded.ProductClasses, initial)
+	}
+
+	// Update with new product classes.
+	updated := []string{"class-c", "class-d", "class-e"}
+	rule.ParameterValue = "updated"
+	rule.ProductClasses = updated
+	if err := provRepo.Update(ctx, rule); err != nil {
+		t.Fatalf("update rule: %v", err)
+	}
+
+	// Verify the update persisted correctly.
+	if err := db.First(&loaded, rule.ID).Error; err != nil {
+		t.Fatalf("reload rule: %v", err)
+	}
+	if len(loaded.ProductClasses) != 3 {
+		t.Fatalf("updated ProductClasses len = %d, want 3 (got %v)", len(loaded.ProductClasses), loaded.ProductClasses)
+	}
+	for i, want := range updated {
+		if loaded.ProductClasses[i] != want {
+			t.Errorf("ProductClasses[%d] = %q, want %q", i, loaded.ProductClasses[i], want)
+		}
+	}
+	if loaded.ParameterValue != "updated" {
+		t.Errorf("ParameterValue = %q, want %q", loaded.ParameterValue, "updated")
+	}
+
+	// Update to nil (clear product classes).
+	rule.ProductClasses = nil
+	if err := provRepo.Update(ctx, rule); err != nil {
+		t.Fatalf("update rule to nil: %v", err)
+	}
+	if err := db.First(&loaded, rule.ID).Error; err != nil {
+		t.Fatalf("reload rule after nil: %v", err)
+	}
+	if loaded.ProductClasses != nil {
+		t.Errorf("ProductClasses after nil update = %v, want nil", loaded.ProductClasses)
+	}
+}
+
 // TestMaxOrder verifies that MaxOrder returns the highest order value for a
 // given phase and 0 when no rules exist for that phase.
 func TestMaxOrder(t *testing.T) {
