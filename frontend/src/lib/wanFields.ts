@@ -5,35 +5,83 @@ export interface WanFieldDef {
   options?: string[];
   placeholder?: string;
   validate?: (value: string) => string | null;
+  section?: string;
+  visibleWhen?: (getVal: (suffixes: string[]) => string) => boolean;
+  labelWhen?: (getVal: (suffixes: string[]) => string) => string;
 }
+
+const isRouted = (getVal: (suffixes: string[]) => string) => getVal(['ConnectionType']) === 'IP_Routed';
+const isPPPoE = (getVal: (suffixes: string[]) => string) => getVal(['AddressingType']) === 'PPPoE';
+const isDHCP = (getVal: (suffixes: string[]) => string) => getVal(['AddressingType']) === 'DHCP';
+const isIPv6 = (getVal: (suffixes: string[]) => string) => getVal(['X_HW_LowerLayers']) === 'IPv6';
+const isNATEnabled = (getVal: (suffixes: string[]) => string) => {
+  const v = getVal(['NATEnabled']);
+  return v === '1' || v === 'true';
+};
 
 export const GENERAL_FIELDS: WanFieldDef[] = [
   { label: 'Name', suffixes: ['Name'], type: 'text', placeholder: 'Connection name' },
-  { label: 'Enable', suffixes: ['Enable'], type: 'toggle' },
-  { label: 'Connection Type', suffixes: ['ConnectionType'], type: 'select', options: ['PPPoE', 'IP', 'DHCP', 'Static', 'Unconfigured'] },
-  { label: 'VLAN', suffixes: ['X_HW_VLAN', 'VLANID', 'VLANIDMark'], type: 'number', placeholder: '1–4094', validate: (v) => { const n = parseInt(v, 10); if (isNaN(n) || n < 1 || n > 4094) return 'VLAN must be 1–4094'; return null; } },
-  { label: 'Service', suffixes: ['X_HW_SERVICELIST', 'X_HW_ServiceList', 'ServiceList'], type: 'text', placeholder: 'e.g. 832' },
+  { label: 'Enable WAN', suffixes: ['Enable'], type: 'toggle' },
+  { label: 'WAN Mode', suffixes: ['ConnectionType'], type: 'select', options: ['IP_Routed', 'IP_Bridged'] },
+  { label: 'Encapsulation Mode', suffixes: ['AddressingType'], type: 'select', options: ['IP', 'DHCP', 'PPPoE', 'None'], visibleWhen: isRouted },
+  { label: 'Protocol Type', suffixes: ['X_HW_LowerLayers'], type: 'select', options: ['IPv4', 'IPv6', 'IPv4/IPv6'] },
+  { label: 'Service Type', suffixes: ['X_HW_SERVICELIST'], type: 'text', placeholder: 'e.g. 832' },
+  { label: 'VLAN ID', suffixes: ['X_HW_VLAN'], type: 'number', placeholder: '0–4096 (0 = disabled)', validate: (v) => { const n = parseInt(v, 10); if (isNaN(n) || n < 0 || n > 4096) return 'VLAN must be 0–4096'; return null; } },
+  { label: '802.1p Policy', suffixes: ['X_HW_PriPolicy'], type: 'select', options: ['Use the specified value', 'Use the default value'] },
+  { label: '802.1p', suffixes: ['X_HW_PRI'], type: 'select', options: ['0', '1', '2', '3', '4', '5', '6', '7'] },
+  { label: 'MTU / MRU', suffixes: ['MaxMTUSize', 'X_HW_MTU'], type: 'number', placeholder: '1280–1500', validate: (v) => { const n = parseInt(v, 10); if (isNaN(n) || n < 1280 || n > 1500) return 'MTU must be 1280–1500'; return null; } },
+  { label: 'User Name', suffixes: ['Username'], type: 'text', placeholder: 'PPPoE username', visibleWhen: isPPPoE },
+  { label: 'Password', suffixes: ['Password'], type: 'password', placeholder: 'PPPoE password', visibleWhen: isPPPoE },
+  { label: 'Enable passthrough', suffixes: ['X_HW_Passthrough', 'PassthroughEnable'], type: 'toggle', visibleWhen: isPPPoE },
+  { label: 'Enable LCP Detection', suffixes: ['X_HW_LCPDetection', 'LCPDetection'], type: 'toggle', visibleWhen: isPPPoE },
 ];
 
-export const CREDENTIALS_FIELDS: WanFieldDef[] = [
-  { label: 'Username', suffixes: ['Username'], type: 'text', placeholder: 'PPPoE username' },
-  { label: 'Password', suffixes: ['Password'], type: 'password', placeholder: 'PPPoE password' },
-  { label: 'Service Name', suffixes: ['ServiceName'], type: 'text', placeholder: 'e.g. INTERNET' },
+export const BINDING_FIELDS: WanFieldDef[] = [
+  { label: 'LAN1', suffixes: ['X_HW_LANBIND.Lan1Enable'], type: 'toggle', section: 'binding' },
+  { label: 'LAN2', suffixes: ['X_HW_LANBIND.Lan2Enable'], type: 'toggle', section: 'binding' },
+  { label: 'LAN3', suffixes: ['X_HW_LANBIND.Lan3Enable'], type: 'toggle', section: 'binding' },
+  { label: 'LAN4', suffixes: ['X_HW_LANBIND.Lan4Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID1', suffixes: ['X_HW_LANBIND.SSID1Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID2', suffixes: ['X_HW_LANBIND.SSID2Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID3', suffixes: ['X_HW_LANBIND.SSID3Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID4', suffixes: ['X_HW_LANBIND.SSID4Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID5', suffixes: ['X_HW_LANBIND.SSID5Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID6', suffixes: ['X_HW_LANBIND.SSID6Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID7', suffixes: ['X_HW_LANBIND.SSID7Enable'], type: 'toggle', section: 'binding' },
+  { label: 'SSID8', suffixes: ['X_HW_LANBIND.SSID8Enable'], type: 'toggle', section: 'binding' },
+];
+
+export const IPV4_FIELDS: WanFieldDef[] = [
+  { label: 'IP Acquisition Mode', suffixes: ['X_HW_IPv4AcqMode', 'IPv4AddressingType'], type: 'select', options: ['IP', 'DHCP', 'PPPoE', 'None'], visibleWhen: isRouted },
+  { label: 'Enable NAT', suffixes: ['NATEnabled'], type: 'toggle', visibleWhen: isRouted },
+  { label: 'NAT type', suffixes: ['X_HW_NatType'], type: 'select', options: ['0', '1', '2', '3'], visibleWhen: isNATEnabled },
+  { label: 'Vendor ID', suffixes: ['X_HW_VenderClassID'], type: 'text', placeholder: '0–64 chars', visibleWhen: isDHCP },
+  { label: 'User ID', suffixes: ['X_HW_ClientID'], type: 'text', placeholder: '0–64 chars', visibleWhen: isDHCP },
+  { label: 'Dialing Method', suffixes: ['X_HW_DialingMethod', 'DialingMethod'], type: 'select', options: ['Auto', 'Manual'], visibleWhen: isPPPoE },
+  { label: 'Multicast VLAN ID', suffixes: ['X_HW_MultiCastVLAN'], type: 'number', placeholder: '0–4094', validate: (v) => { const n = parseInt(v, 10); if (isNaN(n) || n < 0 || n > 4094) return 'Must be 0–4094'; return null; }, visibleWhen: isRouted },
+];
+
+export const IPV6_FIELDS: WanFieldDef[] = [
+  { label: 'Prefix Acquisition Mode', suffixes: ['X_HW_IPv6PrefixAcqMode', 'X_HW_PrefixAcqMode'], type: 'select', options: ['DHCPv6', 'RA', 'Static'], visibleWhen: isRouted },
+  { label: 'IP Acquisition Mode', suffixes: ['X_HW_IPv6AcqMode', 'X_HW_IPv6AddressingMode'], type: 'select', options: ['DHCPv6', 'RA', 'Static', 'None'], visibleWhen: isRouted },
+  { label: 'Prefix Mask', suffixes: ['X_HW_IPv6PrefixMask', 'X_HW_PrefixMask'], type: 'text', placeholder: 'e.g. 64' },
+  { label: 'Multicast VLAN ID', suffixes: ['X_HW_IPv6MultiCastVLAN'], type: 'number', placeholder: '0–4094', validate: (v) => { const n = parseInt(v, 10); if (isNaN(n) || n < 0 || n > 4094) return 'Must be 0–4094'; return null; }, visibleWhen: isRouted },
+  { label: 'DS-Lite Working Mode', suffixes: ['X_HW_6RDTunnel.Mode', 'X_HW_DSLiteMode'], type: 'select', options: ['Disabled', 'Static', 'Dynamic'], visibleWhen: isIPv6 },
+  { label: 'AFTR Name', suffixes: ['X_HW_6RDTunnel.AFTRName', 'X_HW_AFTRName'], type: 'text', placeholder: 'AFTR hostname or IP' },
+  { label: 'Enable NPTv6', suffixes: ['X_HW_NPTv6Enable'], type: 'toggle', visibleWhen: isRouted },
 ];
 
 export const ADVANCED_FIELDS: WanFieldDef[] = [
-  { label: 'NAT', suffixes: ['NATEnabled'], type: 'toggle' },
-  { label: 'Max Bit Rate', suffixes: ['MaxBitRate'], type: 'number', placeholder: 'e.g. 1000000' },
-  { label: 'Min Bit Rate', suffixes: ['MinBitRate'], type: 'number', placeholder: 'e.g. 1000000' },
-  { label: 'MTU', suffixes: ['X_HW_MTU'], type: 'number', placeholder: '576–9000', validate: (v) => { const n = parseInt(v, 10); if (isNaN(n) || n < 576 || n > 9000) return 'MTU must be 576–9000'; return null; } },
-  { label: 'DSL Link Type', suffixes: ['X_HW_DSLLinkType'], type: 'select', options: ['Auto', 'G.dmt', 'G.992.1', 'G.992.3', 'G.992.5'] },
-  { label: 'Line Profile', suffixes: ['X_HW_LineProfile'], type: 'select', options: ['Auto', '26M', '35M', '40M', '52M', '60M', '80M', '100M'] },
-  { label: 'Line Mode', suffixes: ['X_HW_LineMode'], type: 'select', options: ['Auto', 'AnnexA', 'AnnexB', 'AnnexM', 'AnnexJ'] },
-  { label: 'ATM Encapsulation', suffixes: ['X_HW_ATMEncapsulation'], type: 'select', options: ['Auto', 'LLC', 'VC-Mux', 'Bridged'] },
-  { label: 'ATM Payload', suffixes: ['X_HW_ATMPayload'], type: 'number', placeholder: 'e.g. 8' },
+  { label: 'Connection Trigger', suffixes: ['ConnectionTrigger'], type: 'select', options: ['Auto', 'Manual', 'Schedule'] },
+  { label: 'Auto Disconnect', suffixes: ['AutoDisconnectTime'], type: 'number', placeholder: 'seconds (0 = never)' },
+  { label: 'Idle Disconnect', suffixes: ['IdleDisconnectTime'], type: 'number', placeholder: 'seconds (0 = never)' },
+  { label: 'Warn Disconnect Delay', suffixes: ['WarnDisconnectDelay'], type: 'number', placeholder: 'seconds' },
+  { label: 'Shaping Rate', suffixes: ['ShapingRate'], type: 'number', placeholder: 'bps' },
+  { label: 'Shaping Burst Size', suffixes: ['ShapingBurstSize'], type: 'number', placeholder: 'bytes' },
+  { label: 'Route Protocol Rx', suffixes: ['RouteProtocolRx'], type: 'select', options: ['Static', 'DHCP', 'BGP', 'OSPF'] },
 ];
 
-export const ALL_FIELDS = [...GENERAL_FIELDS, ...CREDENTIALS_FIELDS, ...ADVANCED_FIELDS];
+export const ALL_FIELDS = [...GENERAL_FIELDS, ...BINDING_FIELDS, ...IPV4_FIELDS, ...IPV6_FIELDS, ...ADVANCED_FIELDS];
 
 export function resolveSuffix(parameters: { name: string }[], prefix: string, suffixes: string[]): string | null {
   for (const s of suffixes) {

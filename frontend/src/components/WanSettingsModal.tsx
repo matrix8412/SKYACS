@@ -3,7 +3,7 @@ import { api, type DeviceParameter } from '../lib/api';
 import { useFeedback } from './Feedback';
 import Dialog from './Dialog';
 import { Save, Send, Check } from 'lucide-solid';
-import { GENERAL_FIELDS, CREDENTIALS_FIELDS, ADVANCED_FIELDS, resolveSuffix, getChangedParams, validateFields, type WanFieldDef } from '../lib/wanFields';
+import { GENERAL_FIELDS, BINDING_FIELDS, IPV4_FIELDS, IPV6_FIELDS, ADVANCED_FIELDS, resolveSuffix, getChangedParams, validateFields, type WanFieldDef } from '../lib/wanFields';
 
 interface WanSettingsModalProps {
   wanPath: string;
@@ -14,11 +14,12 @@ interface WanSettingsModalProps {
   onSaved: () => void;
 }
 
-type TabId = 'general' | 'credentials' | 'advanced';
+type TabId = 'general' | 'ipv4' | 'ipv6' | 'advanced';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'general', label: 'General' },
-  { id: 'credentials', label: 'Credentials' },
+  { id: 'ipv4', label: 'IPv4' },
+  { id: 'ipv6', label: 'IPv6' },
   { id: 'advanced', label: 'Advanced' },
 ];
 
@@ -69,7 +70,7 @@ const WanSettingsModal: Component<WanSettingsModalProps> = (props) => {
 
   const hasChanges = createMemo(() => Object.keys(getChangedParams(props.parameters, prefix, edits())).length > 0);
 
-  const knownSuffixes = new Set(ADVANCED_FIELDS.flatMap(f => f.suffixes));
+  const knownSuffixes = new Set([...GENERAL_FIELDS, ...BINDING_FIELDS, ...IPV4_FIELDS, ...IPV6_FIELDS, ...ADVANCED_FIELDS].flatMap(f => f.suffixes));
   const genericParams = createMemo(() => {
     return props.parameters
       .filter(p => p.name.startsWith(prefix) && !knownSuffixes.has(p.name.slice(prefix.length)))
@@ -89,9 +90,14 @@ const WanSettingsModal: Component<WanSettingsModalProps> = (props) => {
 
   const hasGenericChanges = createMemo(() => Object.keys(getGenericChanged()).length > 0);
 
-  const hasCredentialFields = createMemo(() =>
-    CREDENTIALS_FIELDS.some(f => resolveFieldSuffix(f.suffixes) !== null)
-  );
+  const getValForVisibility = (suffixes: string[]): string => {
+    const suffix = resolveSuffix(props.parameters, prefix, suffixes);
+    if (!suffix) return '';
+    const key = prefix + suffix;
+    return edits()[key] ?? props.parameters.find(p => p.name === key)?.value ?? '';
+  };
+
+  const isRoutedMode = createMemo(() => getValForVisibility(['ConnectionType']) === 'IP_Routed');
 
   const validate = (): boolean => {
     const newErrors = validateFields(props.parameters, prefix, edits());
@@ -127,14 +133,16 @@ const WanSettingsModal: Component<WanSettingsModalProps> = (props) => {
   const renderField = (field: WanFieldDef) => {
     const suffix = resolveFieldSuffix(field.suffixes);
     if (!suffix) return null;
+    if (field.visibleWhen && !field.visibleWhen(getValForVisibility)) return null;
     const key = prefix + suffix;
     const value = getValue(field);
     const writable = isWritable(field);
     const error = errors()[key];
+    const displayLabel = field.labelWhen ? field.labelWhen(getValForVisibility) : field.label;
 
     return (
       <div class="flex flex-col gap-1">
-        <label class="text-xs text-muted" for={`wan-${key}`}>{field.label}</label>
+        <label class="text-xs text-muted" for={`wan-${key}`}>{displayLabel}</label>
         <Show when={field.type === 'toggle'}>
           <button
             id={`wan-${key}`}
@@ -178,7 +186,8 @@ const WanSettingsModal: Component<WanSettingsModalProps> = (props) => {
 
   const fieldsForTab = (tab: TabId) => {
     if (tab === 'general') return GENERAL_FIELDS;
-    if (tab === 'credentials') return CREDENTIALS_FIELDS;
+    if (tab === 'ipv4') return IPV4_FIELDS;
+    if (tab === 'ipv6') return IPV6_FIELDS;
     return ADVANCED_FIELDS;
   };
 
@@ -228,13 +237,30 @@ const WanSettingsModal: Component<WanSettingsModalProps> = (props) => {
           <div class="grid grid-cols-2 gap-4">
             <For each={fieldsForTab('general')}>{(field) => renderField(field)}</For>
           </div>
+          <Show when={BINDING_FIELDS.some(f => resolveFieldSuffix(f.suffixes) !== null)}>
+            <div class="mt-4 pt-4 border-t border-subtle">
+              <h4 class="text-xs font-medium text-muted mb-3">Binding Options</h4>
+              <div class="grid grid-cols-4 gap-2">
+                <For each={BINDING_FIELDS}>{(field) => renderField(field)}</For>
+              </div>
+            </div>
+          </Show>
         </Show>
-        <Show when={activeTab() === 'credentials'}>
-          <Show when={hasCredentialFields()} fallback={
-            <p class="text-muted text-sm">No credential fields available for this connection type.</p>
+        <Show when={activeTab() === 'ipv4'}>
+          <Show when={isRoutedMode()} fallback={
+            <p class="text-muted text-sm">Switch WAN Mode to IP_Routed to configure IPv4 settings.</p>
           }>
             <div class="grid grid-cols-2 gap-4">
-              <For each={fieldsForTab('credentials')}>{(field) => renderField(field)}</For>
+              <For each={fieldsForTab('ipv4')}>{(field) => renderField(field)}</For>
+            </div>
+          </Show>
+        </Show>
+        <Show when={activeTab() === 'ipv6'}>
+          <Show when={isRoutedMode()} fallback={
+            <p class="text-muted text-sm">Switch WAN Mode to IP_Routed to configure IPv6 settings.</p>
+          }>
+            <div class="grid grid-cols-2 gap-4">
+              <For each={fieldsForTab('ipv6')}>{(field) => renderField(field)}</For>
             </div>
           </Show>
         </Show>
