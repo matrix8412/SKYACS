@@ -344,7 +344,7 @@ const DeviceDetail: Component = () => {
         ? wan.portParams.ssidEnablePaths?.[portNumber]
         : wan.portParams.lanEnablePaths?.[portNumber];
       if (boolPath) {
-        params[boolPath] = check ? 'true' : 'false';
+        params[boolPath] = check ? '1' : '0';
         await api.setParameterValues(serial(), params);
         const portLabel = kind === 'lan' ? `L${portNumber}` : `S${portNumber}`;
         showMessage('success', `WAN tie ${portLabel} ${check ? 'assigned to' : 'removed from'} ${wan.name} task created.`);
