@@ -4,8 +4,6 @@ export interface WanParameter {
 }
 
 export interface PortParams {
-  serviceListPath?: string;
-  serviceListValue?: string;
   lanEnablePaths?: Record<number, string>;
   ssidEnablePaths?: Record<number, string>;
 }
@@ -74,30 +72,22 @@ export function getWanProfiles(parameters: WanParameter[]): WanProfile[] {
       return '-';
     };
     const portBinding = (number: number, kind: 'lan' | 'ssid') => {
-      const patterns = kind === 'lan'
-        ? [`Lan${number}Enable`, `LAN${number}Enable`, `Eth${number}Enable`, `ETH${number}`, `LAN${number}`, `Port${number}`]
-        : [`SSID${number}Enable`, `Ssid${number}Enable`, `Wlan${number}Enable`, `WLAN${number}`, `SSID${number}`, `WiFi${number}`];
-      if (relevant.some(p => patterns.some(pattern => p.name.includes(pattern)) && enabled(p.value))) return true;
-      return relevant.some(p => /binding|bindlist|servicelist|portmapping/i.test(p.name) &&
-        (kind === 'lan' ? [`lan${number}`, `eth${number}`, `port${number}`] : [`ssid${number}`, `wlan${number}`, `wifi${number}`])
-          .some(term => p.value.toLowerCase().includes(term)));
+      const path = kind === 'lan' ? lanEnablePaths[number] : ssidEnablePaths[number];
+      return path ? enabled(relevant.find(p => p.name === path)?.value ?? '') : false;
     };
     const natValue = ownValue('NATEnabled');
-    const serviceListParam = relevant.find(p =>
-      /X_HW_SERVICELIST|X_HW_ServiceList|ServiceList|X_CT_ServiceList|X_CU_ServiceList/i.test(p.name)
-    );
     const lanEnablePaths: Record<number, string> = {};
     const ssidEnablePaths: Record<number, string> = {};
     for (const p of relevant) {
+      if (!p.name.includes('.X_HW_LANBIND.')) continue;
       const lanMatch = p.name.match(/\.Lan(\d+)Enable$/i);
       if (lanMatch) { lanEnablePaths[Number(lanMatch[1])] = p.name; continue; }
       const ssidMatch = p.name.match(/\.SSID(\d+)Enable$/i);
       if (ssidMatch) { ssidEnablePaths[Number(ssidMatch[1])] = p.name; }
     }
     const hasBooleanPaths = Object.keys(lanEnablePaths).length > 0 || Object.keys(ssidEnablePaths).length > 0;
-    const portParams = serviceListParam || hasBooleanPaths
+    const portParams = hasBooleanPaths
       ? {
-          ...(serviceListParam ? { serviceListPath: serviceListParam.name, serviceListValue: serviceListParam.value } : {}),
           ...(Object.keys(lanEnablePaths).length > 0 ? { lanEnablePaths } : {}),
           ...(Object.keys(ssidEnablePaths).length > 0 ? { ssidEnablePaths } : {}),
         }

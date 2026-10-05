@@ -330,19 +330,15 @@ const DeviceDetail: Component = () => {
     await toggleParam(wan.path + 'Enable', enable ? '1' : '0', `WAN ${wan.name} ${enable ? 'enabled' : 'disabled'}`);
   };
 
-  const portTerms = (number: number, kind: 'lan' | 'ssid') =>
-    kind === 'lan' ? [`lan${number}`, `eth${number}`, `port${number}`] : [`ssid${number}`, `wlan${number}`, `wifi${number}`];
-
-  const parseServiceList = (value: string) => value.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean);
-
   const handleWanTie = async (wan: WanProfile, portNumber: number, kind: 'lan' | 'ssid', check: boolean) => {
-    if (!wan.portParams) return;
+    if (!wan.portParams) {
+      showMessage('error', 'This CPE does not expose a supported WAN port binding parameter.');
+      return;
+    }
     const key = `wan-tie-${wan.path}-${kind}${portNumber}`;
     setActionLoading(key);
     try {
       const params: Record<string, string> = {};
-      const terms = portTerms(portNumber, kind);
-      const allWans = wanProfiles();
 
       const boolPath = kind === 'ssid'
         ? wan.portParams.ssidEnablePaths?.[portNumber]
@@ -356,39 +352,7 @@ const DeviceDetail: Component = () => {
         setActionLoading(null);
         return;
       }
-
-      const serviceListPath = wan.portParams.serviceListPath;
-      const serviceListValue = wan.portParams.serviceListValue;
-      if (!serviceListPath || serviceListValue === undefined) {
-        setActionLoading(null);
-        return;
-      }
-
-      if (check) {
-        const currentList = parseServiceList(serviceListValue);
-        if (!terms.some(t => currentList.some(item => item.toLowerCase() === t.toLowerCase()))) {
-          currentList.push(kind === 'lan' ? `lan${portNumber}` : `ssid${portNumber}`);
-        }
-        params[serviceListPath] = currentList.join(',');
-        for (const other of allWans) {
-          if (other.path === wan.path || !other.portParams) continue;
-          const otherPath = other.portParams.serviceListPath;
-          const otherValue = other.portParams.serviceListValue;
-          if (!otherPath || otherValue === undefined) continue;
-          const otherList = parseServiceList(otherValue);
-          if (terms.some(t => otherList.some(item => item.toLowerCase() === t.toLowerCase()))) {
-            params[otherPath] = otherList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
-          }
-        }
-      } else {
-        const currentList = parseServiceList(serviceListValue);
-        params[serviceListPath] = currentList.filter(item => !terms.some(t => item.toLowerCase() === t.toLowerCase())).join(',');
-      }
-
-      await api.setParameterValues(serial(), params);
-      const portLabel = kind === 'lan' ? `L${portNumber}` : `S${portNumber}`;
-      showMessage('success', `WAN tie ${portLabel} ${check ? 'assigned to' : 'removed from'} ${wan.name} task created.`);
-      refetchTasks();
+      showMessage('error', 'This CPE does not expose a supported WAN port binding parameter.');
     } catch (err) {
       showMessage('error', 'WAN tie change was not applied. Check the CPE session and retry.', (err as Error).message);
     }

@@ -324,7 +324,7 @@ const Provisioning: Component = () => {
           <Show when={showSettingsMenu()}>
             <div class="absolute right-0 top-full z-50 mt-2 min-w-40 rounded border border-subtle bg-elevated p-1 shadow-xl" role="menu">
               <button type="button" role="menuitem" class="w-full rounded px-3 py-2 text-left text-sm text-primary hover:bg-base disabled:opacity-50" disabled={settingsLoading()} onClick={openRefreshSettings}>
-                Nastavenia
+                Settings
               </button>
             </div>
           </Show>
