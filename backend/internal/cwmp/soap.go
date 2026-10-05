@@ -307,6 +307,39 @@ func (parameter ParameterValueStruct) MarshalXML(encoder *xml.Encoder, start xml
 	return encoder.EncodeToken(start.End())
 }
 
+func (p *ParameterValueStruct) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "Name":
+				var name string
+				if err := decoder.DecodeElement(&name, &t); err != nil {
+					return err
+				}
+				p.Name = name
+			case "Value":
+				for _, attr := range t.Attr {
+					if attr.Name.Local == "type" && attr.Name.Space == XMLSchemaInstanceNS {
+						p.ValueType = strings.TrimPrefix(attr.Value, "xsd:")
+					}
+				}
+				var value string
+				if err := decoder.DecodeElement(&value, &t); err != nil {
+					return err
+				}
+				p.Value = value
+			}
+		case xml.EndElement:
+			return nil
+		}
+	}
+}
+
 func defaultNamespace(namespace string) string {
 	if _, ok := supportedCWMPNamespaces[namespace]; ok {
 		return namespace

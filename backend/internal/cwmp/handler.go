@@ -594,9 +594,10 @@ func (h *Handler) handleGetParameterValuesResponse(ctx context.Context, resp *Ge
 		params := make([]models.DeviceParameter, 0, len(resp.ParameterList.Parameters))
 		for _, p := range resp.ParameterList.Parameters {
 			params = append(params, models.DeviceParameter{
-				DeviceID: session.DeviceID,
-				Name:     p.Name,
-				Value:    p.Value,
+				DeviceID:  session.DeviceID,
+				Name:      p.Name,
+				Value:     p.Value,
+				ValueType: p.ValueType,
 			})
 		}
 		fullTree := session.AutoFetchPhase == 1 && session.CurrentTaskID == 0 && len(params) > 0

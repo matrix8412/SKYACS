@@ -71,9 +71,10 @@ type ParameterList struct {
 }
 
 type ParameterValueStruct struct {
-	Name  string `xml:"Name"`
-	Value string `xml:"Value"`
-	Type  string `xml:"-"`
+	Name     string `xml:"Name"`
+	Value    string `xml:"Value"`
+	Type     string `xml:"-"`
+	ValueType string `xml:"-"`
 }
 
 // InformResponse dari ACS ke CPE

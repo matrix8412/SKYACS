@@ -43,6 +43,7 @@ type DeviceParameter struct {
 	DeviceID  int64     `json:"device_id" gorm:"uniqueIndex:idx_device_parameters_unique,priority:1;not null"`
 	Name      string    `json:"name" gorm:"uniqueIndex:idx_device_parameters_unique,priority:2;not null"`
 	Value     string    `json:"value"`
+	ValueType string    `json:"value_type,omitempty"`
 	Writable  *bool     `json:"writable,omitempty"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

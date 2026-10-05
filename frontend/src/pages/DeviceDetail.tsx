@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Settings2, Check } from 'lucide-solid';
+import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Settings2, Check, Download } from 'lucide-solid';
 import { api, type MetricDefinition } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
@@ -35,6 +35,21 @@ const defaultHostColumns: HostColumnConfig[] = [
   { id: 'interface', label: 'Interface', visible: true },
   { id: 'rssi', label: 'Signal', visible: true },
   { id: 'uptime', label: 'Uptime', visible: true },
+];
+
+interface ParamColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+}
+
+const PARAM_COLUMNS_STORAGE_KEY = 'skyacs_all_params_columns';
+const defaultParamColumns: ParamColumnConfig[] = [
+  { id: 'object', label: 'Object', visible: false },
+  { id: 'name', label: 'Name', visible: true },
+  { id: 'writable', label: 'Writable', visible: false },
+  { id: 'value_type', label: 'Value type', visible: false },
+  { id: 'value', label: 'Value', visible: true },
 ];
 
 const DeviceDetail: Component = () => {
@@ -117,6 +132,8 @@ const DeviceDetail: Component = () => {
   const [hostColumnFilters, setHostColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [showHostColumnSettings, setShowHostColumnSettings] = createSignal(false);
   const [hostColumns, setHostColumns] = createSignal<HostColumnConfig[]>([]);
+  const [showParamColumnSettings, setShowParamColumnSettings] = createSignal(false);
+  const [paramColumns, setParamColumns] = createSignal<ParamColumnConfig[]>([]);
   const [editingConnCreds, setEditingConnCreds] = createSignal(false);
   const [connCredMode, setConnCredMode] = createSignal('inherit');
   const [connCredUsername, setConnCredUsername] = createSignal('');
@@ -146,6 +163,61 @@ const DeviceDetail: Component = () => {
       localStorage.setItem(HOST_COLUMNS_STORAGE_KEY, JSON.stringify(columns));
     }
   });
+
+  onMount(() => {
+    const saved = localStorage.getItem(PARAM_COLUMNS_STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as ParamColumnConfig[];
+        setParamColumns(defaultParamColumns.map(column => {
+          const stored = parsed.find(item => item.id === column.id);
+          return stored ? { ...column, visible: stored.visible } : column;
+        }));
+      } catch {
+        setParamColumns([...defaultParamColumns]);
+      }
+    } else {
+      setParamColumns([...defaultParamColumns]);
+    }
+  });
+
+  createEffect(() => {
+    const columns = paramColumns();
+    if (columns.length > 0) {
+      localStorage.setItem(PARAM_COLUMNS_STORAGE_KEY, JSON.stringify(columns));
+    }
+  });
+
+  const toggleParamColumn = (id: string) => {
+    setParamColumns(columns => columns.map(column => column.id === id ? { ...column, visible: !column.visible } : column));
+  };
+
+  const exportParamsCSV = () => {
+    const visibleCols = paramColumns().filter(c => c.visible);
+    if (visibleCols.length === 0) return;
+    const headers = visibleCols.map(c => c.label);
+    const rows = filteredParams().map(param => {
+      const objPath = param.name.includes('.') ? param.name.substring(0, param.name.lastIndexOf('.')) : '';
+      return visibleCols.map(col => {
+        switch (col.id) {
+          case 'object': return objPath;
+          case 'name': return param.name;
+          case 'writable': return param.writable ? 'yes' : 'no';
+          case 'value_type': return param.value_type || '';
+          case 'value': return displayParameterValue(param.name, param.value);
+          default: return '';
+        }
+      });
+    });
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${v.replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `parameters_${device()?.serial_number || 'export'}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const deviceTags = createMemo(() => device()?.tags || []);
 
@@ -817,7 +889,10 @@ const DeviceDetail: Component = () => {
     }
     return applyColumnFilters(params, paramColumnFilters(), (p, colId) => {
       switch (colId) {
+        case 'object': return p.name.includes('.') ? p.name.substring(0, p.name.lastIndexOf('.')) : '';
         case 'name': return p.name || '';
+        case 'writable': return p.writable ? 'yes' : 'no';
+        case 'value_type': return p.value_type || '';
         case 'value': return p.value || '';
         default: return '';
       }
@@ -1844,7 +1919,25 @@ const DeviceDetail: Component = () => {
               <div class="p-5 border-b border-subtle flex items-center justify-between">
                 <div class="flex items-center gap-3">
                   <h2 class="text-sm font-medium text-secondary">All Parameters ({filteredParams().length})</h2>
-
+                  <button
+                    type="button"
+                    class="btn btn-secondary text-xs"
+                    onClick={() => setShowParamColumnSettings(value => !value)}
+                    aria-expanded={showParamColumnSettings()}
+                    aria-controls="all-params-column-settings"
+                  >
+                    <Settings2 size={14} />
+                    Columns
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary text-xs"
+                    onClick={exportParamsCSV}
+                    disabled={filteredParams().length === 0}
+                  >
+                    <Download size={14} />
+                    Export CSV
+                  </button>
                 </div>
                 <div><label for="parameter-filter" class="block text-[10px] text-muted mb-1">Filter parameter tree</label><input
                   id="parameter-filter"
@@ -1855,35 +1948,73 @@ const DeviceDetail: Component = () => {
                   class="input w-64 py-1.5 text-sm"
                 /></div>
               </div>
+              <Show when={showParamColumnSettings()}>
+                <div id="all-params-column-settings" class="flex flex-wrap gap-2 px-5 py-3 border-b border-subtle" aria-label="All Parameters column visibility">
+                  <For each={paramColumns()}>
+                    {(column) => (
+                      <button
+                        type="button"
+                        onClick={() => toggleParamColumn(column.id)}
+                        class={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs ${column.visible ? 'border-sky-500/50 text-sky-400 bg-sky-500/10' : 'border-subtle text-muted'}`}
+                        aria-pressed={column.visible}
+                      >
+                        <Show when={column.visible}><Check size={12} /></Show>
+                        {column.label}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
               <Show when={filteredParams().length > 0} fallback={
                 <div class="p-8 text-center">
                   <p class="text-muted text-sm">No parameters loaded yet. Click Summon to fetch.</p>
                 </div>
               }>
                 <div class="max-h-96 overflow-auto">
-                  <table class="data-table w-full text-sm table-fixed">
+                  <table class="data-table w-full text-sm">
                     <thead class="bg-base sticky top-0 z-10">
                       <tr class="bg-base">
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted w-3/5">
+                        <Show when={paramColumns().find(c => c.id === 'object')?.visible}><th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Object
+                            <ColumnFilter columnId="object" label="Object" active={paramColumnFilters()['object'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['object'] = s; else delete n['object']; return n; }); }} />
+                          </div>
+                        </th></Show>
+                        <Show when={paramColumns().find(c => c.id === 'name')?.visible}><th class="text-left px-4 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">Name
                             <ColumnFilter columnId="name" label="Name" active={paramColumnFilters()['name'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['name'] = s; else delete n['name']; return n; }); }} />
                           </div>
-                        </th>
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted w-2/5">
+                        </th></Show>
+                        <Show when={paramColumns().find(c => c.id === 'writable')?.visible}><th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Writable
+                            <ColumnFilter columnId="writable" label="Writable" active={paramColumnFilters()['writable'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['writable'] = s; else delete n['writable']; return n; }); }} />
+                          </div>
+                        </th></Show>
+                        <Show when={paramColumns().find(c => c.id === 'value_type')?.visible}><th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Value type
+                            <ColumnFilter columnId="value_type" label="Value type" active={paramColumnFilters()['value_type'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['value_type'] = s; else delete n['value_type']; return n; }); }} />
+                          </div>
+                        </th></Show>
+                        <Show when={paramColumns().find(c => c.id === 'value')?.visible}><th class="text-left px-4 py-2 text-xs font-medium text-muted">
                           <div class="flex items-center gap-1.5">Value
                             <ColumnFilter columnId="value" label="Value" active={paramColumnFilters()['value'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['value'] = s; else delete n['value']; return n; }); }} />
                           </div>
-                        </th>
+                        </th></Show>
                       </tr>
                     </thead>
                     <tbody>
                       <For each={filteredParams()}>
                         {(param) => (
                           <tr class="border-t border-subtle/50 hover:bg-elevated/30">
-                            <td class="px-4 py-2 text-secondary font-mono text-xs truncate" title={param.name}><button type="button" class="data-link font-mono text-left" onClick={() => setSelectedParam(param)}>{param.name}</button></td>
-                            <td class="px-4 py-2 text-primary text-xs truncate max-w-xs">
+                            <Show when={paramColumns().find(c => c.id === 'object')?.visible}><td class="px-4 py-2 text-muted font-mono text-xs truncate" title={param.name.includes('.') ? param.name.substring(0, param.name.lastIndexOf('.')) : ''}>{param.name.includes('.') ? param.name.substring(0, param.name.lastIndexOf('.')) : ''}</td></Show>
+                            <Show when={paramColumns().find(c => c.id === 'name')?.visible}><td class="px-4 py-2 text-secondary font-mono text-xs truncate" title={param.name}><button type="button" class="data-link font-mono text-left" onClick={() => setSelectedParam(param)}>{param.name}</button></td></Show>
+                            <Show when={paramColumns().find(c => c.id === 'writable')?.visible}><td class="px-4 py-2 text-xs">
+                              <Show when={param.writable}><span class="text-emerald-400">✓</span></Show>
+                              <Show when={!param.writable}><span class="text-muted">—</span></Show>
+                            </td></Show>
+                            <Show when={paramColumns().find(c => c.id === 'value_type')?.visible}><td class="px-4 py-2 text-muted text-xs">{param.value_type || '—'}</td></Show>
+                            <Show when={paramColumns().find(c => c.id === 'value')?.visible}><td class="px-4 py-2 text-primary text-xs truncate max-w-xs">
                               {displayParameterValue(param.name, param.value).length > 100 ? displayParameterValue(param.name, param.value).slice(0, 100) + '...' : displayParameterValue(param.name, param.value)}
-                            </td>
+                            </td></Show>
                           </tr>
                         )}
                       </For>

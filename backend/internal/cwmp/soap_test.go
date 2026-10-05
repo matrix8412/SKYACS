@@ -134,3 +134,76 @@ func TestParseAddObjectFault(t *testing.T) {
 		t.Fatalf("CWMP fault not parsed: %+v", fault)
 	}
 }
+
+func TestParameterValueStructUnmarshalXML(t *testing.T) {
+	tests := []struct {
+		name       string
+		xml        string
+		wantName   string
+		wantValue  string
+		wantType   string
+	}{
+		{
+			name:       "with xsi:type unsignedInt",
+			xml:        `<ParameterValueStruct xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Name>InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.MaxDownloadRate</Name><Value xsi:type="xsd:unsignedInt">1500</Value></ParameterValueStruct>`,
+			wantName:   "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.MaxDownloadRate",
+			wantValue:  "1500",
+			wantType:   "unsignedInt",
+		},
+		{
+			name:       "with xsi:type string",
+			xml:        `<ParameterValueStruct xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Name>InternetGatewayDevice.DeviceInfo.Manufacturer</Name><Value xsi:type="xsd:string">Huawei</Value></ParameterValueStruct>`,
+			wantName:   "InternetGatewayDevice.DeviceInfo.Manufacturer",
+			wantValue:  "Huawei",
+			wantType:   "string",
+		},
+		{
+			name:       "with xsi:type boolean",
+			xml:        `<ParameterValueStruct xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Name>InternetGatewayDevice.LANDevice.1.LANEnable</Name><Value xsi:type="xsd:boolean">true</Value></ParameterValueStruct>`,
+			wantName:   "InternetGatewayDevice.LANDevice.1.LANEnable",
+			wantValue:  "true",
+			wantType:   "boolean",
+		},
+		{
+			name:       "without xsi:type",
+			xml:        `<ParameterValueStruct><Name>InternetGatewayDevice.DeviceInfo.SerialNumber</Name><Value>ABC123</Value></ParameterValueStruct>`,
+			wantName:   "InternetGatewayDevice.DeviceInfo.SerialNumber",
+			wantValue:  "ABC123",
+			wantType:   "",
+		},
+		{
+			name:       "with xsi:type dateTime",
+			xml:        `<ParameterValueStruct xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><Name>InternetGatewayDevice.Time.CurrentTime</Name><Value xsi:type="xsd:dateTime">2026-01-01T00:00:00Z</Value></ParameterValueStruct>`,
+			wantName:   "InternetGatewayDevice.Time.CurrentTime",
+			wantValue:  "2026-01-01T00:00:00Z",
+			wantType:   "dateTime",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decoder := xml.NewDecoder(strings.NewReader(tt.xml))
+			token, err := decoder.Token()
+			if err != nil {
+				t.Fatalf("Token: %v", err)
+			}
+			start, ok := token.(xml.StartElement)
+			if !ok {
+				t.Fatalf("expected StartElement, got %T", token)
+			}
+			var p ParameterValueStruct
+			if err := p.UnmarshalXML(decoder, start); err != nil {
+				t.Fatalf("UnmarshalXML: %v", err)
+			}
+			if p.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", p.Name, tt.wantName)
+			}
+			if p.Value != tt.wantValue {
+				t.Errorf("Value = %q, want %q", p.Value, tt.wantValue)
+			}
+			if p.ValueType != tt.wantType {
+				t.Errorf("ValueType = %q, want %q", p.ValueType, tt.wantType)
+			}
+		})
+	}
+}

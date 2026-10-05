@@ -120,7 +120,7 @@ func upsertMany(db *gorm.DB, deviceID int64, params []models.DeviceParameter) er
 	}
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "device_id"}, {Name: "name"}},
-		DoUpdates: clause.AssignmentColumns([]string{"value", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"value", "value_type", "updated_at"}),
 	}).CreateInBatches(&params, 500).Error
 }
 
