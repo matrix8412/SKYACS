@@ -64,6 +64,12 @@
 [data-theme="light"] .text-orange-400 { color: rgb(194 65 12); }
 [data-theme="light"] .text-blue-400 { color: rgb(37 99 235); }
 
+/* Light mode: remap hardcoded zinc backgrounds to theme-aware values */
+[data-theme="light"] .bg-zinc-700 { background-color: rgb(var(--bg-elevated)); }
+[data-theme="light"] .bg-zinc-600 { background-color: rgb(var(--bg-hover)); }
+[data-theme="light"] .border-zinc-600 { border-color: rgb(var(--border-default)); }
+[data-theme="light"] .hover\:bg-zinc-700:hover { background-color: rgb(var(--bg-hover)); }
+
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
 body {
