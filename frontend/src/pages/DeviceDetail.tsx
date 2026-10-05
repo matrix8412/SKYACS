@@ -66,6 +66,7 @@ const DeviceDetail: Component = () => {
   const [tasks, { refetch: refetchTasks }] = createResource(serial, api.getDeviceTasks);
   const [deviceFaults, { refetch: refetchDeviceFaults }] = createResource(serial, api.getDeviceFaults);
   const [metricDefs] = createResource(api.getMetricDefinitions);
+  const [settings] = createResource(api.getSettings);
   const [taskPage, setTaskPage] = createSignal(0);
   const { pageSize: taskPageSize, changePageSize: changeTaskPageSize } = usePageSize('device_tasks', 10);
   const handleTaskPageSizeChange = (size: number) => { changeTaskPageSize(size); setTaskPage(0); };
@@ -120,6 +121,14 @@ const DeviceDetail: Component = () => {
   const [refreshInterval, setRefreshInterval] = createSignal<number>(
     parseInt(localStorage.getItem(`skyacs_auto_refresh_${params.serial}`) ?? '30000', 10)
   );
+  createEffect(() => {
+    const s = settings();
+    if (!s) return;
+    const stored = localStorage.getItem(`skyacs_auto_refresh_${params.serial}`);
+    if (stored === null) {
+      setRefreshInterval(parseInt(s['default_refresh_interval'] ?? '30000', 10));
+    }
+  });
   const [selectedParam, setSelectedParam] = createSignal<{ name: string; value: string } | null>(null);
   const [editingModemCreds, setEditingModemCreds] = createSignal(false);
   const [showSensitive, setShowSensitive] = createSignal(false);

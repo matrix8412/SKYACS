@@ -853,6 +853,7 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 		"connection_request_password": true, "use_auto_conn_credentials": true,
 		"default_page_size": true, "chart_show_points": true, "app_name": true,
 		"overview_poll_interval": true, "full_tree_poll_interval": true,
+		"default_refresh_interval": true,
 	}
 	for key, value := range settings {
 		if !allowed[key] {
@@ -916,6 +917,13 @@ func (r *Router) handleUpdateSettings(w http.ResponseWriter, req *http.Request) 
 			return
 		}
 		settings["app_name"] = trimmed
+	}
+	if value, ok := settings["default_refresh_interval"]; ok {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 || parsed > 300000 {
+			respondError(w, http.StatusBadRequest, "default_refresh_interval must be an integer between 0 and 300000 (milliseconds)")
+			return
+		}
 	}
 	autoCredentials := settings["use_auto_conn_credentials"] == "true"
 	if _, supplied := settings["use_auto_conn_credentials"]; !supplied {

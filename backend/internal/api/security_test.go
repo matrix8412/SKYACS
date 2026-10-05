@@ -16,6 +16,9 @@ func TestRefreshIntervalSettingsRejectInvalidValues(t *testing.T) {
 		`{"overview_poll_interval":"25h"}`,
 		`{"full_tree_poll_interval":"8d"}`,
 		`{"full_tree_poll_interval":"bad"}`,
+		`{"default_refresh_interval":"-1"}`,
+		`{"default_refresh_interval":"300001"}`,
+		`{"default_refresh_interval":"abc"}`,
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest("PUT", "/settings", strings.NewReader(body))
