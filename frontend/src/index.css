@@ -38,7 +38,7 @@
   --bg-hover: 218 229 239;
   --text-primary: 15 31 48;
   --text-secondary: 65 88 112;
-  --text-muted: 78 99 121;
+  --text-muted: 55 75 95;
   --border-subtle: 214 224 234;
   --border-default: 190 204 218;
   --accent: 2 132 199;
@@ -54,6 +54,15 @@
   --scrollbar-track: 241 245 249;
   --scrollbar-thumb: 190 204 218;
 }
+
+/* Light mode: darken Tailwind 400-level text colors for readability on white */
+[data-theme="light"] .text-emerald-400 { color: rgb(4 120 87); }
+[data-theme="light"] .text-rose-400 { color: rgb(190 18 60); }
+[data-theme="light"] .text-red-400 { color: rgb(185 28 28); }
+[data-theme="light"] .text-sky-400 { color: rgb(3 105 161); }
+[data-theme="light"] .text-amber-400 { color: rgb(180 83 9); }
+[data-theme="light"] .text-orange-400 { color: rgb(194 65 12); }
+[data-theme="light"] .text-blue-400 { color: rgb(37 99 235); }
 
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; margin: 0; }
