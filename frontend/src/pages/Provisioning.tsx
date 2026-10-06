@@ -22,11 +22,12 @@ interface ProvColumnConfig {
 const defaultProvColumns: ProvColumnConfig[] = [
   { id: 'parameter', label: 'CWMP path', visible: true, order: 0 },
   { id: 'value', label: 'Value', visible: true, order: 1 },
-  { id: 'manufacturer', label: 'Manufacturer', visible: true, order: 2 },
-  { id: 'product_class', label: 'Product Class', visible: true, order: 3 },
-  { id: 'tag', label: 'Tag', visible: true, order: 4 },
-  { id: 'phase', label: 'Phase', visible: true, order: 5 },
-  { id: 'status', label: 'Status', visible: true, order: 6 },
+  { id: 'parameter_type', label: 'Value type', visible: true, order: 2 },
+  { id: 'manufacturer', label: 'Manufacturer', visible: true, order: 3 },
+  { id: 'product_class', label: 'Product Class', visible: true, order: 4 },
+  { id: 'tag', label: 'Tag', visible: true, order: 5 },
+  { id: 'phase', label: 'Phase', visible: true, order: 6 },
+  { id: 'status', label: 'Status', visible: true, order: 7 },
 ];
 
 const PROV_STORAGE_KEY = 'skyacs-prov-columns';
@@ -77,6 +78,7 @@ const Provisioning: Component = () => {
     switch (colId) {
       case 'parameter': return rule.add_object_path || rule.parameter_name || '';
       case 'value': return rule.add_object_path ? '' : rule.parameter_value || '';
+      case 'parameter_type': return rule.parameter_type || '';
       case 'manufacturer': return rule.manufacturer || '';
       case 'product_class': return (rule.product_classes && rule.product_classes.length > 0) ? rule.product_classes.join(', ') : (rule.product_class || '');
       case 'tag': return rule.tag || '';
@@ -379,6 +381,9 @@ const Provisioning: Component = () => {
                         </Show>
                         <Show when={visibleProvColumns().some(c => c.id === 'value')}>
                           <td class="py-2 text-secondary text-xs font-mono max-w-xs truncate">{p.add_object_path ? '—' : p.parameter_value}</td>
+                        </Show>
+                        <Show when={visibleProvColumns().some(c => c.id === 'parameter_type')}>
+                          <td class="py-2 text-secondary text-xs">{p.add_object_path ? '—' : (p.parameter_type || '—')}</td>
                         </Show>
                         <Show when={visibleProvColumns().some(c => c.id === 'manufacturer')}>
                           <td class="py-2 text-secondary text-xs">{p.manufacturer || '—'}</td>
