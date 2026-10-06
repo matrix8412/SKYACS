@@ -73,6 +73,8 @@ const DeviceDetail: Component = () => {
   const [taskDetailTab, setTaskDetailTab] = createSignal<'requested' | 'result'>('requested');
   const { pageSize: taskPageSize, changePageSize: changeTaskPageSize } = usePageSize('device_tasks', 10);
   const handleTaskPageSizeChange = (size: number) => { changeTaskPageSize(size); setTaskPage(0); };
+  const [taskColumnFilters, setTaskColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [deviceFaultColumnFilters, setDeviceFaultColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const filteredTasks = createMemo(() => {
     const all = tasks() || [];
     return applyColumnFilters(all, taskColumnFilters(), (t, colId) => {
@@ -169,8 +171,6 @@ const DeviceDetail: Component = () => {
   const [tagsLoading, setTagsLoading] = createSignal(false);
   const [paramColumnFilters, setParamColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [hostColumnFilters, setHostColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
-  const [taskColumnFilters, setTaskColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
-  const [deviceFaultColumnFilters, setDeviceFaultColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [hostColumns, setHostColumns] = createSignal<HostColumnConfig[]>([]);
   const [paramColumns, setParamColumns] = createSignal<ParamColumnConfig[]>([]);
   const [editingConnCreds, setEditingConnCreds] = createSignal(false);
