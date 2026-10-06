@@ -1,5 +1,5 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For, type Component } from 'solid-js';
-import { Edit2, GripVertical, MoreVertical, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-solid';
+import { Copy, Edit2, GripVertical, MoreVertical, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-solid';
 import { api, type ProvisioningRule } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFeedback } from '../components/Feedback';
@@ -49,6 +49,7 @@ const Provisioning: Component = () => {
   const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', product_classes: [] as string[], tag: '', enabled: true, description: '', add_object_path: '', order: 0, condition: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
   const [isAddObjectRule, setIsAddObjectRule] = createSignal(false);
+  const [copyingProv, setCopyingProv] = createSignal(false);
 
   const provisioningPayload = (form: typeof emptyProvisioningRule) => {
     const base = isAddObjectRule()
@@ -220,6 +221,7 @@ const Provisioning: Component = () => {
       setShowProvModal(false);
       setProvForm({ ...emptyProvisioningRule });
       setIsAddObjectRule(false);
+      setCopyingProv(false);
       refetchProvRules();
     } catch (error) { notify({ tone: 'error', title: 'Could not create provisioning rule', message: 'No rule was added. The entered values are preserved.', detail: (error as Error).message, persistent: true }); }
     finally { setPendingAction(null); }
@@ -262,6 +264,7 @@ const Provisioning: Component = () => {
 
   const openEditProv = (p: ProvisioningRule) => {
     setEditingProv(p);
+    setCopyingProv(false);
     setIsAddObjectRule(Boolean(p.add_object_path));
     setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', product_classes: p.product_classes || [], tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
     setShowProvModal(true);
@@ -269,8 +272,17 @@ const Provisioning: Component = () => {
 
   const openCreateProv = () => {
     setEditingProv(null);
+    setCopyingProv(false);
     setIsAddObjectRule(false);
     setProvForm({ ...emptyProvisioningRule });
+    setShowProvModal(true);
+  };
+
+  const openCopyProv = (p: ProvisioningRule) => {
+    setEditingProv(null);
+    setCopyingProv(true);
+    setIsAddObjectRule(Boolean(p.add_object_path));
+    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', product_classes: p.product_classes || [], tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
     setShowProvModal(true);
   };
 
@@ -407,6 +419,9 @@ const Provisioning: Component = () => {
                             <button onClick={() => openEditProv(p)} class="icon-button" aria-label={`Edit provisioning rule ${p.parameter_name}`} disabled={pendingAction() !== null}>
                               <Edit2 size={14} />
                             </button>
+                            <button onClick={() => openCopyProv(p)} class="icon-button" aria-label={`Copy provisioning rule ${p.parameter_name}`} disabled={pendingAction() !== null}>
+                              <Copy size={14} />
+                            </button>
                             <button onClick={() => handleDeleteProv(p.id)} class="icon-button" aria-label={`Delete provisioning rule ${p.parameter_name}`} disabled={pendingAction() !== null}>
                               <Trash2 size={14} />
                             </button>
@@ -452,7 +467,7 @@ const Provisioning: Component = () => {
       </Show>
       <Show when={showProvModal()}>
         <Dialog
-          title={editingProv() ? 'Edit provisioning rule' : 'Add provisioning rule'}
+          title={editingProv() ? 'Edit provisioning rule' : copyingProv() ? 'Duplicate provisioning rule' : 'Add provisioning rule'}
           onClose={() => setShowProvModal(false)}
         >
           <form onSubmit={(e) => { e.preventDefault(); editingProv() ? handleUpdateProv() : handleCreateProv(); }} class="space-y-4">

@@ -73,21 +73,48 @@ const DeviceDetail: Component = () => {
   const [taskDetailTab, setTaskDetailTab] = createSignal<'requested' | 'result'>('requested');
   const { pageSize: taskPageSize, changePageSize: changeTaskPageSize } = usePageSize('device_tasks', 10);
   const handleTaskPageSizeChange = (size: number) => { changeTaskPageSize(size); setTaskPage(0); };
-  const pagedTasks = createMemo(() => {
+  const filteredTasks = createMemo(() => {
     const all = tasks() || [];
+    return applyColumnFilters(all, taskColumnFilters(), (t, colId) => {
+      switch (colId) {
+        case 'type': return t.type || '';
+        case 'status': return t.status || '';
+        case 'created_at': return t.created_at || '';
+        case 'completed_at': return t.completed_at || '';
+        case 'created_by': return t.created_by || '';
+        case 'error': return t.error_message || '';
+        default: return '';
+      }
+    });
+  });
+  const pagedTasks = createMemo(() => {
+    const all = filteredTasks();
     const start = taskPage() * taskPageSize();
     return all.slice(start, start + taskPageSize());
   });
-  const taskTotalPages = createMemo(() => Math.ceil((tasks()?.length || 0) / taskPageSize()));
+  const taskTotalPages = createMemo(() => Math.ceil(filteredTasks().length / taskPageSize()));
   const [faultPage, setFaultPage] = createSignal(0);
   const { pageSize: faultPageSize, changePageSize: changeFaultPageSize } = usePageSize('device_faults', 10);
   const handleFaultPageSizeChange = (size: number) => { changeFaultPageSize(size); setFaultPage(0); };
-  const pagedDeviceFaults = createMemo(() => {
+  const filteredDeviceFaults = createMemo(() => {
     const all = deviceFaults() || [];
+    return applyColumnFilters(all, deviceFaultColumnFilters(), (f, colId) => {
+      switch (colId) {
+        case 'code': return f.fault_code || '';
+        case 'message': return f.fault_string || '';
+        case 'parameter': return f.parameter_name || '';
+        case 'time': return f.created_at || '';
+        case 'status': return f.resolved ? 'Resolved' : 'Active';
+        default: return '';
+      }
+    });
+  });
+  const pagedDeviceFaults = createMemo(() => {
+    const all = filteredDeviceFaults();
     const start = faultPage() * faultPageSize();
     return all.slice(start, start + faultPageSize());
   });
-  const deviceFaultTotalPages = createMemo(() => Math.ceil((deviceFaults()?.length || 0) / faultPageSize()));
+  const deviceFaultTotalPages = createMemo(() => Math.ceil(filteredDeviceFaults().length / faultPageSize()));
   const unresolvedFaultCount = createMemo(() => (deviceFaults() || []).filter(f => !f.resolved).length);
   const [pendingFault, setPendingFault] = createSignal<number | null>(null);
 
@@ -142,6 +169,8 @@ const DeviceDetail: Component = () => {
   const [tagsLoading, setTagsLoading] = createSignal(false);
   const [paramColumnFilters, setParamColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [hostColumnFilters, setHostColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [taskColumnFilters, setTaskColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [deviceFaultColumnFilters, setDeviceFaultColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [hostColumns, setHostColumns] = createSignal<HostColumnConfig[]>([]);
   const [paramColumns, setParamColumns] = createSignal<ParamColumnConfig[]>([]);
   const [editingConnCreds, setEditingConnCreds] = createSignal(false);
@@ -1784,12 +1813,36 @@ const DeviceDetail: Component = () => {
                   <table class="data-table w-full text-sm min-w-[900px]">
                     <thead class="bg-base sticky top-0 z-10">
                       <tr class="bg-base">
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">Type</th>
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">Status</th>
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">Created</th>
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">Completed</th>
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">User</th>
-                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">Error</th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Type
+                            <ColumnFilter columnId="type" label="Type" active={taskColumnFilters()['type'] || null} onApply={(s) => { setTaskColumnFilters((prev) => { const n = { ...prev }; if (s) n['type'] = s; else delete n['type']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Status
+                            <ColumnFilter columnId="status" label="Status" active={taskColumnFilters()['status'] || null} onApply={(s) => { setTaskColumnFilters((prev) => { const n = { ...prev }; if (s) n['status'] = s; else delete n['status']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Created
+                            <ColumnFilter columnId="created_at" label="Created" active={taskColumnFilters()['created_at'] || null} onApply={(s) => { setTaskColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_at'] = s; else delete n['created_at']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Completed
+                            <ColumnFilter columnId="completed_at" label="Completed" active={taskColumnFilters()['completed_at'] || null} onApply={(s) => { setTaskColumnFilters((prev) => { const n = { ...prev }; if (s) n['completed_at'] = s; else delete n['completed_at']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">User
+                            <ColumnFilter columnId="created_by" label="User" active={taskColumnFilters()['created_by'] || null} onApply={(s) => { setTaskColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_by'] = s; else delete n['created_by']; return n; }); }} />
+                          </div>
+                        </th>
+                        <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                          <div class="flex items-center gap-1.5">Error
+                            <ColumnFilter columnId="error" label="Error" active={taskColumnFilters()['error'] || null} onApply={(s) => { setTaskColumnFilters((prev) => { const n = { ...prev }; if (s) n['error'] = s; else delete n['error']; return n; }); }} />
+                          </div>
+                        </th>
                         <th class="text-right px-4 py-2 text-xs font-medium text-muted">Actions</th>
                       </tr>
                     </thead>
@@ -1819,7 +1872,7 @@ const DeviceDetail: Component = () => {
                   </table>
                 </div>
                 <div class="px-4 py-3">
-                  <Pagination page={taskPage()} totalPages={taskTotalPages()} totalItems={tasks()?.length || 0} pageSize={taskPageSize()} onPageChange={setTaskPage} storageKey="device_tasks" onPageSizeChange={handleTaskPageSizeChange} />
+                  <Pagination page={taskPage()} totalPages={taskTotalPages()} totalItems={filteredTasks().length} pageSize={taskPageSize()} onPageChange={setTaskPage} storageKey="device_tasks" onPageSizeChange={handleTaskPageSizeChange} />
                 </div>
               </Show>
               </Show>
@@ -1894,11 +1947,31 @@ const DeviceDetail: Component = () => {
                     <table class="data-table w-full text-sm min-w-[680px]">
                       <thead class="bg-base sticky top-0 z-10">
                         <tr class="bg-base">
-                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Code</th>
-                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Message</th>
-                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Parameter</th>
-                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Time</th>
-                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">Status</th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                            <div class="flex items-center gap-1.5">Code
+                              <ColumnFilter columnId="code" label="Code" active={deviceFaultColumnFilters()['code'] || null} onApply={(s) => { setDeviceFaultColumnFilters((prev) => { const n = { ...prev }; if (s) n['code'] = s; else delete n['code']; return n; }); }} />
+                            </div>
+                          </th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                            <div class="flex items-center gap-1.5">Message
+                              <ColumnFilter columnId="message" label="Message" active={deviceFaultColumnFilters()['message'] || null} onApply={(s) => { setDeviceFaultColumnFilters((prev) => { const n = { ...prev }; if (s) n['message'] = s; else delete n['message']; return n; }); }} />
+                            </div>
+                          </th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                            <div class="flex items-center gap-1.5">Parameter
+                              <ColumnFilter columnId="parameter" label="Parameter" active={deviceFaultColumnFilters()['parameter'] || null} onApply={(s) => { setDeviceFaultColumnFilters((prev) => { const n = { ...prev }; if (s) n['parameter'] = s; else delete n['parameter']; return n; }); }} />
+                            </div>
+                          </th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                            <div class="flex items-center gap-1.5">Time
+                              <ColumnFilter columnId="time" label="Time" active={deviceFaultColumnFilters()['time'] || null} onApply={(s) => { setDeviceFaultColumnFilters((prev) => { const n = { ...prev }; if (s) n['time'] = s; else delete n['time']; return n; }); }} />
+                            </div>
+                          </th>
+                          <th class="text-left px-4 py-2 text-xs font-medium text-muted">
+                            <div class="flex items-center gap-1.5">Status
+                              <ColumnFilter columnId="status" label="Status" active={deviceFaultColumnFilters()['status'] || null} onApply={(s) => { setDeviceFaultColumnFilters((prev) => { const n = { ...prev }; if (s) n['status'] = s; else delete n['status']; return n; }); }} />
+                            </div>
+                          </th>
                           <th class="text-right px-4 py-2 text-xs font-medium text-muted">Actions</th>
                         </tr>
                       </thead>
@@ -1954,7 +2027,7 @@ const DeviceDetail: Component = () => {
                     </table>
                   </div>
                   <div class="px-4 py-3">
-                    <Pagination page={faultPage()} totalPages={deviceFaultTotalPages()} totalItems={deviceFaults()?.length || 0} pageSize={faultPageSize()} onPageChange={setFaultPage} storageKey="device_faults" onPageSizeChange={handleFaultPageSizeChange} />
+                    <Pagination page={faultPage()} totalPages={deviceFaultTotalPages()} totalItems={filteredDeviceFaults().length} pageSize={faultPageSize()} onPageChange={setFaultPage} storageKey="device_faults" onPageSizeChange={handleFaultPageSizeChange} />
                   </div>
                 </Show>
               }>
