@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Check, Download, Search } from 'lucide-solid';
+import { ArrowLeft, RefreshCw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Key, Eye, EyeOff, Plus, Tags, Activity, AlertTriangle, Check, Download, Search, MoreVertical } from 'lucide-solid';
 import { api, type MetricDefinition, type Task } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
@@ -164,6 +164,8 @@ const DeviceDetail: Component = () => {
   };
 
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
+  const [showActionsMenu, setShowActionsMenu] = createSignal(false);
+  let actionsMenu: HTMLDivElement | undefined;
   const [message, setMessage] = createSignal<{ type: 'success' | 'error'; text: string; detail?: string } | null>(null);
   const [paramFilter, setParamFilter] = createSignal('');
   const [wifiModalIndex, setWifiModalIndex] = createSignal<number | null>(null);
@@ -214,6 +216,21 @@ const DeviceDetail: Component = () => {
     } else {
       setHostColumns([...defaultHostColumns]);
     }
+  });
+
+  onMount(() => {
+    const closeActionsMenu = (event: MouseEvent) => {
+      if (!actionsMenu?.contains(event.target as Node)) setShowActionsMenu(false);
+    };
+    const closeActionsMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowActionsMenu(false);
+    };
+    document.addEventListener('click', closeActionsMenu);
+    document.addEventListener('keydown', closeActionsMenuOnEscape);
+    onCleanup(() => {
+      document.removeEventListener('click', closeActionsMenu);
+      document.removeEventListener('keydown', closeActionsMenuOnEscape);
+    });
   });
 
   createEffect(() => {
@@ -1045,6 +1062,27 @@ const DeviceDetail: Component = () => {
             <option value="30000">30 s</option>
             <option value="60000">60 s</option>
           </select>
+          <Show when={isFullAccess()}>
+            <div class="relative" ref={actionsMenu}>
+              <button type="button" class="icon-button" aria-label="Device actions" aria-haspopup="menu" aria-expanded={showActionsMenu()} onClick={() => setShowActionsMenu(value => !value)}>
+                <MoreVertical size={18} />
+              </button>
+              <Show when={showActionsMenu()}>
+                <div class="absolute right-0 top-full z-50 mt-2 min-w-44 rounded border border-subtle bg-elevated p-1 shadow-xl" role="menu">
+                  <button type="button" role="menuitem" class="w-full rounded px-3 py-2 text-left text-sm text-primary hover:bg-base disabled:opacity-50" disabled={actionLoading() !== null} onClick={() => { setShowActionsMenu(false); void handleReboot(); }}>
+                    Reboot
+                  </button>
+                  <button type="button" role="menuitem" class="w-full rounded px-3 py-2 text-left text-sm text-primary hover:bg-base disabled:opacity-50" disabled={actionLoading() !== null} onClick={() => { setShowActionsMenu(false); setShowFactoryResetModal(true); }}>
+                    Factory reset
+                  </button>
+                  <div class="my-1 border-t border-subtle" role="separator"></div>
+                  <button type="button" role="menuitem" class="w-full rounded px-3 py-2 text-left text-sm text-rose-400 hover:bg-rose-500/10 disabled:opacity-50" disabled={actionLoading() !== null} onClick={() => { setShowActionsMenu(false); void handleDelete(); }}>
+                    Delete CPE
+                  </button>
+                </div>
+              </Show>
+            </div>
+          </Show>
         </div>
       </div>
 
@@ -1160,7 +1198,7 @@ const DeviceDetail: Component = () => {
               </div>
 
               {/* Device Health - Compact Horizontal */}
-              <div class="card p-4 lg:col-span-4">
+              <div class="card p-4 lg:col-span-7">
                 <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
                   <HeartPulse size={14} />
                   Device Health
@@ -1186,27 +1224,6 @@ const DeviceDetail: Component = () => {
                   </div>
                 </div>
               </div>
-              {/* Actions Card */}
-              <Show when={isFullAccess()} fallback={<div class="card p-5 lg:col-span-3 flex flex-col justify-center"><ShieldCheck size={20} class="text-sky-500 mb-3" /><strong class="text-sm">Read-only workspace</strong><span class="text-[11px] text-muted mt-1">Configuration actions are restricted by RBAC.</span></div>}><div class="card p-5 lg:col-span-3">
-                <h2 class="text-sm font-medium text-secondary mb-4 flex items-center gap-2">
-                  <Send size={14} />
-                  Actions
-                </h2>
-                <div class="space-y-2">
-                  <button onClick={handleReboot} disabled={actionLoading() !== null} class="btn btn-secondary w-full justify-start text-sm py-2">
-                    <RotateCcw size={14} />
-                    {actionLoading() === 'reboot' ? '...' : 'Reboot'}
-                  </button>
-				  <button onClick={() => setShowFactoryResetModal(true)} disabled={actionLoading() !== null} class="btn btn-danger w-full justify-start text-sm py-2">
-                    <RotateCcw size={14} />
-                    Reset
-                  </button>
-                  <button onClick={handleDelete} disabled={actionLoading() !== null} class="btn btn-danger w-full justify-start text-sm py-2">
-                    <Trash2 size={14} />
-                    Delete
-                  </button>
-                </div>
-              </div></Show>
             </div>
 
             </Show>
