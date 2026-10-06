@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Check, Download } from 'lucide-solid';
+import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Check, Download, Search } from 'lucide-solid';
 import { api, type MetricDefinition, type Task } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
@@ -75,8 +75,20 @@ const DeviceDetail: Component = () => {
   const handleTaskPageSizeChange = (size: number) => { changeTaskPageSize(size); setTaskPage(0); };
   const [taskColumnFilters, setTaskColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [deviceFaultColumnFilters, setDeviceFaultColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [taskSearch, setTaskSearch] = createSignal('');
+  const [faultSearch, setFaultSearch] = createSignal('');
+  const [hostSearch, setHostSearch] = createSignal('');
   const filteredTasks = createMemo(() => {
-    const all = tasks() || [];
+    let all = tasks() || [];
+    const query = taskSearch().toLowerCase().trim();
+    if (query) {
+      all = all.filter(t =>
+        t.type?.toLowerCase().includes(query) ||
+        t.status?.toLowerCase().includes(query) ||
+        t.created_by?.toLowerCase().includes(query) ||
+        t.error_message?.toLowerCase().includes(query)
+      );
+    }
     return applyColumnFilters(all, taskColumnFilters(), (t, colId) => {
       switch (colId) {
         case 'type': return t.type || '';
@@ -99,7 +111,15 @@ const DeviceDetail: Component = () => {
   const { pageSize: faultPageSize, changePageSize: changeFaultPageSize } = usePageSize('device_faults', 10);
   const handleFaultPageSizeChange = (size: number) => { changeFaultPageSize(size); setFaultPage(0); };
   const filteredDeviceFaults = createMemo(() => {
-    const all = deviceFaults() || [];
+    let all = deviceFaults() || [];
+    const query = faultSearch().toLowerCase().trim();
+    if (query) {
+      all = all.filter(f =>
+        f.fault_code?.toLowerCase().includes(query) ||
+        f.fault_string?.toLowerCase().includes(query) ||
+        f.parameter_name?.toLowerCase().includes(query)
+      );
+    }
     return applyColumnFilters(all, deviceFaultColumnFilters(), (f, colId) => {
       switch (colId) {
         case 'code': return f.fault_code || '';
@@ -939,7 +959,16 @@ const DeviceDetail: Component = () => {
   };
 
   const filteredHosts = () => {
-    const hosts = getHosts();
+    let hosts = getHosts();
+    const query = hostSearch().toLowerCase().trim();
+    if (query) {
+      hosts = hosts.filter(h =>
+        h.hostname?.toLowerCase().includes(query) ||
+        h.ip?.toLowerCase().includes(query) ||
+        h.mac?.toLowerCase().includes(query) ||
+        h.interface?.toLowerCase().includes(query)
+      );
+    }
     return applyColumnFilters(hosts, hostColumnFilters(), (h, colId) => {
       switch (colId) {
         case 'hostname': return h.hostname || '';
@@ -1709,11 +1738,18 @@ const DeviceDetail: Component = () => {
               <div class="flex items-center justify-between mb-4">
                 <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
                   <Users size={14} />
-                  Connected Hosts ({getHosts().length})
+                  Connected Hosts ({filteredHosts().length})
                 </h2>
+                <div class="relative">
+                  <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                  <input type="text" value={hostSearch()} onInput={(e) => setHostSearch(e.currentTarget.value)} placeholder="Search hosts…" class="input pl-9! w-48 text-sm" />
+                  <Show when={hostSearch()}>
+                    <button onClick={() => setHostSearch('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                  </Show>
+                </div>
               </div>
               <Show when={!parameters.loading || (parameters()?.length ?? 0) > 0} fallback={<div class="space-y-2" aria-label="Loading connected hosts"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-2/3" /></div>}>
-                <Show when={getHosts().length > 0} fallback={
+                <Show when={filteredHosts().length > 0} fallback={
                   <EmptyState compact title="No connected hosts are reported" description="The stored parameter set contains no active LAN or Wi-Fi clients. Send a connection request with Summon to request current host data." />
                 }>
                 <div class="overflow-x-auto">
@@ -1804,8 +1840,15 @@ const DeviceDetail: Component = () => {
             {/* Row 5: Task History */}
             <Show when={activeTab() === 'tasks'}>
             <div class="card overflow-hidden">
-              <div class="p-5 border-b border-subtle">
+              <div class="p-5 border-b border-subtle flex items-center justify-between">
                 <h2 class="text-sm font-medium text-secondary">Task History ({tasks()?.length || 0})</h2>
+                <div class="relative">
+                  <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                  <input type="text" value={taskSearch()} onInput={(e) => setTaskSearch(e.currentTarget.value)} placeholder="Search tasks…" class="input pl-9! w-48 text-sm" />
+                  <Show when={taskSearch()}>
+                    <button onClick={() => setTaskSearch('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                  </Show>
+                </div>
               </div>
               <Show when={!tasks.loading} fallback={<div class="p-5 space-y-2" aria-label="Loading CPE task history"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-full" /></div>}>
               <Show when={(tasks()?.length || 0) > 0} fallback={<EmptyState compact title="No remote tasks have been queued" description="Reboot, parameter, firmware, and connection-request operations will appear here after an operator creates them." />}>
@@ -1933,11 +1976,18 @@ const DeviceDetail: Component = () => {
             <Show when={activeTab() === 'faults'}>
             {/* Row 5.5: CWMP Faults */}
             <div class="card overflow-hidden">
-              <div class="p-5 border-b border-subtle">
+              <div class="p-5 border-b border-subtle flex items-center justify-between">
                 <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
                   <AlertTriangle size={14} />
                   CWMP Faults ({deviceFaults()?.length || 0})
                 </h2>
+                <div class="relative">
+                  <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                  <input type="text" value={faultSearch()} onInput={(e) => setFaultSearch(e.currentTarget.value)} placeholder="Search faults…" class="input pl-9! w-48 text-sm" />
+                  <Show when={faultSearch()}>
+                    <button onClick={() => setFaultSearch('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                  </Show>
+                </div>
               </div>
               <Show when={deviceFaults.loading} fallback={
                 <Show when={(deviceFaults()?.length || 0) > 0} fallback={

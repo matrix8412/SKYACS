@@ -129,7 +129,7 @@ const UsersPage: Component = () => {
           <div class="flex items-center gap-2">
             <div class="relative">
               <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-              <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search users…" class="input pl-9 w-40 text-sm" />
+              <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search users…" class="input pl-9! w-48 text-sm" />
               <Show when={searchQuery()}>
                 <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
               </Show>
