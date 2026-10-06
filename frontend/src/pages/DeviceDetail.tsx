@@ -1713,11 +1713,12 @@ const DeviceDetail: Component = () => {
                             </td>
                             <td class="px-3 py-2">
                               <Show when={isFullAccess()}>
-                                <button 
+                                <button
                                   onClick={() => setWifiModalIndex(wlan.index)}
-                                  class="text-sky-400 hover:text-sky-300 flex items-center gap-1"
+                                  class="icon-button"
+                                  aria-label={`Edit Wi-Fi SSID${wlan.index}`}
                                 >
-                                  <Edit size={12} /> Edit
+                                  <Edit size={14} />
                                 </button>
                               </Show>
                             </td>
