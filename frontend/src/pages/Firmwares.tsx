@@ -7,9 +7,11 @@ import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
+import { useColumnVisibility } from '../lib/useColumnVisibility';
 
 const Firmwares: Component = () => {
   const { isFullAccess } = useAuth();
@@ -18,6 +20,13 @@ const Firmwares: Component = () => {
   const [uploading, setUploading] = createSignal(false);
   const [validation, setValidation] = createSignal<{ file?: string; version?: string }>({});
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const { columns, isVisible, toggle } = useColumnVisibility('firmwares', [
+    { id: 'filename', label: 'Filename', visible: true },
+    { id: 'version', label: 'Version', visible: true },
+    { id: 'manufacturer', label: 'Manufacturer', visible: true },
+    { id: 'file_size', label: 'Size', visible: true },
+    { id: 'created_at', label: 'Uploaded', visible: true },
+  ]);
   const [fwPage, setFwPage] = createSignal(0);
   const { pageSize, changePageSize } = usePageSize('firmwares', 15);
   const handlePageSizeChange = (size: number) => { changePageSize(size); setFwPage(0); };
@@ -198,43 +207,54 @@ const Firmwares: Component = () => {
           <div class="overflow-x-auto table-scroll"><table class="data-table w-full min-w-[720px]">
             <thead>
               <tr class="border-b border-subtle">
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
-                  <div class="flex items-center gap-1.5">Filename
-                    <ColumnFilter columnId="filename" label="Filename" active={columnFilters()['filename'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['filename'] = s; else delete n['filename']; return n; }); }} />
-                  </div>
-                </th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
-                  <div class="flex items-center gap-1.5">Version
-                    <ColumnFilter columnId="version" label="Version" active={columnFilters()['version'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['version'] = s; else delete n['version']; return n; }); }} />
-                  </div>
-                </th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
-                  <div class="flex items-center gap-1.5">Manufacturer
-                    <ColumnFilter columnId="manufacturer" label="Manufacturer" active={columnFilters()['manufacturer'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['manufacturer'] = s; else delete n['manufacturer']; return n; }); }} />
-                  </div>
-                </th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
-                  <div class="flex items-center gap-1.5">Size
-                    <ColumnFilter columnId="file_size" label="Size" active={columnFilters()['file_size'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['file_size'] = s; else delete n['file_size']; return n; }); }} />
-                  </div>
-                </th>
-                <th class="px-4 py-3 text-left text-xs font-medium text-muted">
-                  <div class="flex items-center gap-1.5">Uploaded
-                    <ColumnFilter columnId="created_at" label="Uploaded" active={columnFilters()['created_at'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_at'] = s; else delete n['created_at']; return n; }); }} />
-                  </div>
-                </th>
+                <Show when={isVisible('filename')}>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                    <div class="flex items-center gap-1.5">Filename
+                      <ColumnFilter columnId="filename" label="Filename" active={columnFilters()['filename'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['filename'] = s; else delete n['filename']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
+                <Show when={isVisible('version')}>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                    <div class="flex items-center gap-1.5">Version
+                      <ColumnFilter columnId="version" label="Version" active={columnFilters()['version'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['version'] = s; else delete n['version']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
+                <Show when={isVisible('manufacturer')}>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                    <div class="flex items-center gap-1.5">Manufacturer
+                      <ColumnFilter columnId="manufacturer" label="Manufacturer" active={columnFilters()['manufacturer'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['manufacturer'] = s; else delete n['manufacturer']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
+                <Show when={isVisible('file_size')}>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                    <div class="flex items-center gap-1.5">Size
+                      <ColumnFilter columnId="file_size" label="Size" active={columnFilters()['file_size'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['file_size'] = s; else delete n['file_size']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
+                <Show when={isVisible('created_at')}>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-muted">
+                    <div class="flex items-center gap-1.5">Uploaded
+                      <ColumnFilter columnId="created_at" label="Uploaded" active={columnFilters()['created_at'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_at'] = s; else delete n['created_at']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
                 <th class="px-4 py-3 text-left text-xs font-medium text-muted">Actions</th>
+                <th class="px-2 py-3"><ColumnVisibility columns={columns} onToggle={toggle} /></th>
               </tr>
             </thead>
             <tbody>
               <For each={pagedFirmwares()}>
                 {(fw: Firmware) => (
                   <tr class="border-t border-subtle/50 hover:bg-elevated/30 transition-fast">
-                    <td class="px-4 py-3 text-primary font-mono text-sm">{fw.filename}</td>
-                    <td class="px-4 py-3 font-mono text-xs text-secondary">{fw.version}</td>
-                    <td class="px-4 py-3 text-secondary text-sm">{fw.manufacturer || '-'}</td>
-                    <td class="px-4 py-3 text-secondary text-sm">{formatSize(fw.file_size)}</td>
-                    <td class="px-4 py-3 text-muted text-xs">{formatDate(fw.created_at)}</td>
+                    <Show when={isVisible('filename')}><td class="px-4 py-3 text-primary font-mono text-sm">{fw.filename}</td></Show>
+                    <Show when={isVisible('version')}><td class="px-4 py-3 font-mono text-xs text-secondary">{fw.version}</td></Show>
+                    <Show when={isVisible('manufacturer')}><td class="px-4 py-3 text-secondary text-sm">{fw.manufacturer || '-'}</td></Show>
+                    <Show when={isVisible('file_size')}><td class="px-4 py-3 text-secondary text-sm">{formatSize(fw.file_size)}</td></Show>
+                    <Show when={isVisible('created_at')}><td class="px-4 py-3 text-muted text-xs">{formatDate(fw.created_at)}</td></Show>
                     <td class="px-4 py-3">
                       <Show when={isFullAccess()}><button
                         onClick={() => handleDelete(fw.id, fw.filename)}
@@ -244,6 +264,7 @@ const Firmwares: Component = () => {
                         Delete
                       </button></Show>
                     </td>
+                    <td class="px-2 py-3"></td>
                   </tr>
                 )}
               </For>

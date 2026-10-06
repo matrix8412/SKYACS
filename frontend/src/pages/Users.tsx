@@ -8,9 +8,11 @@ import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import { useAuth } from '../lib/auth';
 import ColumnFilter from '../components/ColumnFilter';
+import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
+import { useColumnVisibility } from '../lib/useColumnVisibility';
 
 const UsersPage: Component = () => {
   const { isFullAccess } = useAuth();
@@ -26,6 +28,11 @@ const UsersPage: Component = () => {
   const [editingUser, setEditingUser] = createSignal<User | null>(null);
   const [userForm, setUserForm] = createSignal({ username: '', password: '', role: 'read' as 'full' | 'read' });
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const { columns, isVisible, toggle } = useColumnVisibility('users', [
+    { id: 'username', label: 'Username', visible: true },
+    { id: 'role', label: 'Role', visible: true },
+    { id: 'last_login', label: 'Last Login', visible: true },
+  ]);
   const [userPage, setUserPage] = createSignal(0);
   const { pageSize, changePageSize } = usePageSize('users', 15);
   const handlePageSizeChange = (size: number) => { changePageSize(size); setUserPage(0); };
@@ -123,37 +130,48 @@ const UsersPage: Component = () => {
           <div class="overflow-x-auto table-scroll"><table class="data-table w-full text-sm min-w-[620px]">
             <thead>
               <tr class="border-b border-subtle">
-                <th class="text-left py-2 text-xs text-muted font-medium">
-                  <div class="flex items-center gap-1.5">Username
-                    <ColumnFilter columnId="username" label="Username" active={columnFilters()['username'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['username'] = s; else delete n['username']; return n; }); }} />
-                  </div>
-                </th>
-                <th class="text-left py-2 text-xs text-muted font-medium">
-                  <div class="flex items-center gap-1.5">Role
-                    <ColumnFilter columnId="role" label="Role" active={columnFilters()['role'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['role'] = s; else delete n['role']; return n; }); }} />
-                  </div>
-                </th>
-                <th class="text-left py-2 text-xs text-muted font-medium">
-                  <div class="flex items-center gap-1.5">Last Login
-                    <ColumnFilter columnId="last_login" label="Last Login" active={columnFilters()['last_login'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['last_login'] = s; else delete n['last_login']; return n; }); }} />
-                  </div>
-                </th>
+                <Show when={isVisible('username')}>
+                  <th class="text-left py-2 text-xs text-muted font-medium">
+                    <div class="flex items-center gap-1.5">Username
+                      <ColumnFilter columnId="username" label="Username" active={columnFilters()['username'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['username'] = s; else delete n['username']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
+                <Show when={isVisible('role')}>
+                  <th class="text-left py-2 text-xs text-muted font-medium">
+                    <div class="flex items-center gap-1.5">Role
+                      <ColumnFilter columnId="role" label="Role" active={columnFilters()['role'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['role'] = s; else delete n['role']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
+                <Show when={isVisible('last_login')}>
+                  <th class="text-left py-2 text-xs text-muted font-medium">
+                    <div class="flex items-center gap-1.5">Last Login
+                      <ColumnFilter columnId="last_login" label="Last Login" active={columnFilters()['last_login'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['last_login'] = s; else delete n['last_login']; return n; }); }} />
+                    </div>
+                  </th>
+                </Show>
                 <th class="text-right py-2 text-xs text-muted font-medium">Actions</th>
+                <th class="px-2 py-2"><ColumnVisibility columns={columns} onToggle={toggle} /></th>
               </tr>
             </thead>
             <tbody>
               <For each={pagedUsers()}>
                 {(u) => (
                   <tr class="border-b border-subtle/50">
-                    <td class="py-2 text-primary">{u.username}</td>
-                    <td class="py-2">
-                      <span class={`badge ${u.role === 'full' ? 'badge-success' : 'badge-warning'}`}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td class="py-2 text-muted text-xs">
-                      {u.last_login ? new Date(u.last_login).toLocaleString('id-ID') : 'Never'}
-                    </td>
+                    <Show when={isVisible('username')}><td class="py-2 text-primary">{u.username}</td></Show>
+                    <Show when={isVisible('role')}>
+                      <td class="py-2">
+                        <span class={`badge ${u.role === 'full' ? 'badge-success' : 'badge-warning'}`}>
+                          {u.role}
+                        </span>
+                      </td>
+                    </Show>
+                    <Show when={isVisible('last_login')}>
+                      <td class="py-2 text-muted text-xs">
+                        {u.last_login ? new Date(u.last_login).toLocaleString('id-ID') : 'Never'}
+                      </td>
+                    </Show>
                     <td class="py-2 text-right">
                       <div class="flex items-center justify-end gap-1">
                         <button onClick={() => openEditUser(u)} class="icon-button" aria-label={`Edit operator ${u.username}`} disabled={pendingAction() !== null}>
@@ -164,6 +182,7 @@ const UsersPage: Component = () => {
                         </button>
                       </div>
                     </td>
+                    <td class="px-2 py-2"></td>
                   </tr>
                 )}
               </For>

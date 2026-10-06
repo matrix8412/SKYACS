@@ -1,5 +1,5 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For, type Component } from 'solid-js';
-import { Check, ChevronLeft, ChevronRight, Edit2, GripVertical, MoreVertical, Plus, Settings as SettingsIcon, Settings2, Trash2, X } from 'lucide-solid';
+import { Edit2, GripVertical, MoreVertical, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-solid';
 import { api, type ProvisioningRule } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFeedback } from '../components/Feedback';
@@ -7,6 +7,7 @@ import Dialog from '../components/Dialog';
 import PageHeader from '../components/PageHeader';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
@@ -68,8 +69,6 @@ const Provisioning: Component = () => {
     } catch { /* ignore */ }
     return defaultProvColumns;
   })());
-  const [showProvColumnSettings, setShowProvColumnSettings] = createSignal(false);
-  const [provDraggedCol, setProvDraggedCol] = createSignal<string | null>(null);
   const [provDraggedRow, setProvDraggedRow] = createSignal<number | null>(null);
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
 
@@ -162,32 +161,6 @@ const Provisioning: Component = () => {
     setProvColumns(cols => cols.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
   };
 
-  const handleProvDragStart = (e: DragEvent, id: string) => {
-    setProvDraggedCol(id);
-    e.dataTransfer?.setData('text/plain', id);
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleProvDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleProvDrop = (e: DragEvent, targetId: string) => {
-    e.preventDefault();
-    const sourceId = provDraggedCol();
-    setProvDraggedCol(null);
-    if (!sourceId || sourceId === targetId) return;
-    const cols = provColumns().sort((a, b) => a.order - b.order);
-    const sourceIdx = cols.findIndex(c => c.id === sourceId);
-    const targetIdx = cols.findIndex(c => c.id === targetId);
-    if (sourceIdx === -1 || targetIdx === -1) return;
-    const reordered = [...cols];
-    const [moved] = reordered.splice(sourceIdx, 1);
-    reordered.splice(targetIdx, 0, moved);
-    setProvColumns(reordered.map((c, i) => ({ ...c, order: i })));
-  };
-
   const handleRowDragStart = (e: DragEvent, id: number) => {
     setProvDraggedRow(id);
     e.dataTransfer?.setData('text/plain', String(id));
@@ -219,16 +192,6 @@ const Provisioning: Component = () => {
       notify({ tone: 'error', title: 'Reorder failed', detail: (error as Error).message, persistent: true });
       refetchProvRules();
     }
-  };
-
-  const moveProvColumn = (id: string, direction: -1 | 1) => {
-    const cols = provColumns().sort((a, b) => a.order - b.order);
-    const idx = cols.findIndex(c => c.id === id);
-    const swapIdx = idx + direction;
-    if (idx === -1 || swapIdx < 0 || swapIdx >= cols.length) return;
-    const reordered = [...cols];
-    [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
-    setProvColumns(reordered.map((c, i) => ({ ...c, order: i })));
   };
 
   const loadProvRules = async () => {
@@ -342,62 +305,12 @@ const Provisioning: Component = () => {
               <p class="text-muted text-xs mt-1">Rules are evaluated in order. The first matching rule wins for a given parameter.</p>
             </div>
             <div class="flex items-center gap-2">
-              <button onClick={() => setShowProvColumnSettings(!showProvColumnSettings())}
-                class={`btn btn-secondary text-xs py-1.5 ${showProvColumnSettings() ? 'bg-sky-500/20 text-sky-400' : ''}`}
-                aria-expanded={showProvColumnSettings()}
-                aria-controls="prov-column-settings"
-              >
-                <Settings2 size={12} />
-                Columns
-              </button>
               <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
                 <Plus size={12} />
                 Add rule
               </button>
             </div>
           </div>
-
-          {/* Column Settings Panel */}
-          <Show when={showProvColumnSettings()}>
-            <div id="prov-column-settings" class="card p-4 mb-4">
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-medium text-secondary">Manage Columns</h3>
-                <button onClick={() => setShowProvColumnSettings(false)} class="icon-button" aria-label="Close column settings">
-                  <X size={16} />
-                </button>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <For each={provColumns().sort((a, b) => a.order - b.order)}>
-                  {(col) => (
-                    <div
-                      draggable={true}
-                      onDragStart={(e) => handleProvDragStart(e, col.id)}
-                      onDragOver={handleProvDragOver}
-                      onDrop={(e) => handleProvDrop(e, col.id)}
-                      class={`flex items-center gap-2 px-3 py-1.5 bg-elevated cursor-grab active:cursor-grabbing transition-all ${provDraggedCol() === col.id ? 'opacity-50 scale-95' : 'hover:bg-elevated/80'}`}
-                    >
-                      <GripVertical size={12} class="text-muted" />
-                      <button
-                        onClick={() => toggleProvColumn(col.id)}
-                        class={`icon-button ${col.visible ? 'text-sky-400 border-sky-500' : ''}`}
-                        aria-label={`${col.visible ? 'Hide' : 'Show'} ${col.label} column`}
-                        aria-pressed={col.visible}
-                      >
-                        {col.visible && <Check size={10} class="text-white" />}
-                      </button>
-                      <span class={`text-sm ${col.visible ? 'text-primary' : 'text-muted'}`}>
-                        {col.label}
-                      </span>
-                      <span class="inline-flex ml-auto">
-                        <button type="button" class="icon-button" onClick={() => moveProvColumn(col.id, -1)} aria-label={`Move ${col.label} column left`}><ChevronLeft size={12} /></button>
-                        <button type="button" class="icon-button" onClick={() => moveProvColumn(col.id, 1)} aria-label={`Move ${col.label} column right`}><ChevronRight size={12} /></button>
-                      </span>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </div>
-          </Show>
 
           <Show when={provError()}>
             <ResourceError title="Provisioning rules are unavailable" description="The current provisioning policy could not be loaded. Retry before changing a device rollout." onRetry={loadProvRules} />
@@ -419,6 +332,7 @@ const Provisioning: Component = () => {
                       )}
                     </For>
                     <th class="py-2 text-right text-xs font-medium text-muted uppercase tracking-wide">Actions</th>
+                    <th class="py-2 pr-2"><ColumnVisibility columns={provColumns} onToggle={toggleProvColumn} /></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -498,6 +412,7 @@ const Provisioning: Component = () => {
                             </button>
                           </div>
                         </td>
+                        <td class="py-2 pr-2"></td>
                       </tr>
                     )}
                   </For>

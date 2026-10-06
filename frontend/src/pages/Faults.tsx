@@ -8,9 +8,11 @@ import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
+import { useColumnVisibility } from '../lib/useColumnVisibility';
 
 const Faults: Component = () => {
   const { isFullAccess } = useAuth();
@@ -24,6 +26,14 @@ const Faults: Component = () => {
 
   const [stats, { refetch: refetchStats }] = createResource(() => api.getFaultStats());
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const { columns, isVisible, toggle } = useColumnVisibility('faults', [
+    { id: 'serial_number', label: 'Device', visible: true },
+    { id: 'fault_code', label: 'Code', visible: true },
+    { id: 'fault_string', label: 'Message', visible: true },
+    { id: 'parameter_name', label: 'Parameter', visible: true },
+    { id: 'created_at', label: 'Time', visible: true },
+    { id: 'resolved', label: 'Status', visible: true },
+  ]);
   const [faultPage, setFaultPage] = createSignal(0);
   const { pageSize, changePageSize } = usePageSize('faults', 20);
   const handlePageSizeChange = (size: number) => { changePageSize(size); setFaultPage(0); };
@@ -152,67 +162,92 @@ const Faults: Component = () => {
               <table class="data-table w-full text-sm min-w-[700px]">
                 <thead>
                   <tr class="border-b border-subtle bg-surface/50">
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
-                      <div class="flex items-center gap-1.5">Device
-                        <ColumnFilter columnId="serial_number" label="Device" active={columnFilters()['serial_number'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['serial_number'] = s; else delete n['serial_number']; return n; }); }} />
-                      </div>
-                    </th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
-                      <div class="flex items-center gap-1.5">Code
-                        <ColumnFilter columnId="fault_code" label="Code" active={columnFilters()['fault_code'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['fault_code'] = s; else delete n['fault_code']; return n; }); }} />
-                      </div>
-                    </th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
-                      <div class="flex items-center gap-1.5">Message
-                        <ColumnFilter columnId="fault_string" label="Message" active={columnFilters()['fault_string'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['fault_string'] = s; else delete n['fault_string']; return n; }); }} />
-                      </div>
-                    </th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden lg:table-cell">
-                      <div class="flex items-center gap-1.5">Parameter
-                        <ColumnFilter columnId="parameter_name" label="Parameter" active={columnFilters()['parameter_name'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['parameter_name'] = s; else delete n['parameter_name']; return n; }); }} />
-                      </div>
-                    </th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden md:table-cell">
-                      <div class="flex items-center gap-1.5">Time
-                        <ColumnFilter columnId="created_at" label="Time" active={columnFilters()['created_at'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_at'] = s; else delete n['created_at']; return n; }); }} />
-                      </div>
-                    </th>
-                    <th class="text-left px-4 py-3 text-xs font-medium text-muted">
-                      <div class="flex items-center gap-1.5">Status
-                        <ColumnFilter columnId="resolved" label="Status" active={columnFilters()['resolved'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['resolved'] = s; else delete n['resolved']; return n; }); }} />
-                      </div>
-                    </th>
+                    <Show when={isVisible('serial_number')}>
+                      <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                        <div class="flex items-center gap-1.5">Device
+                          <ColumnFilter columnId="serial_number" label="Device" active={columnFilters()['serial_number'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['serial_number'] = s; else delete n['serial_number']; return n; }); }} />
+                        </div>
+                      </th>
+                    </Show>
+                    <Show when={isVisible('fault_code')}>
+                      <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                        <div class="flex items-center gap-1.5">Code
+                          <ColumnFilter columnId="fault_code" label="Code" active={columnFilters()['fault_code'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['fault_code'] = s; else delete n['fault_code']; return n; }); }} />
+                        </div>
+                      </th>
+                    </Show>
+                    <Show when={isVisible('fault_string')}>
+                      <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                        <div class="flex items-center gap-1.5">Message
+                          <ColumnFilter columnId="fault_string" label="Message" active={columnFilters()['fault_string'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['fault_string'] = s; else delete n['fault_string']; return n; }); }} />
+                        </div>
+                      </th>
+                    </Show>
+                    <Show when={isVisible('parameter_name')}>
+                      <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden lg:table-cell">
+                        <div class="flex items-center gap-1.5">Parameter
+                          <ColumnFilter columnId="parameter_name" label="Parameter" active={columnFilters()['parameter_name'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['parameter_name'] = s; else delete n['parameter_name']; return n; }); }} />
+                        </div>
+                      </th>
+                    </Show>
+                    <Show when={isVisible('created_at')}>
+                      <th class="text-left px-4 py-3 text-xs font-medium text-muted hidden md:table-cell">
+                        <div class="flex items-center gap-1.5">Time
+                          <ColumnFilter columnId="created_at" label="Time" active={columnFilters()['created_at'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['created_at'] = s; else delete n['created_at']; return n; }); }} />
+                        </div>
+                      </th>
+                    </Show>
+                    <Show when={isVisible('resolved')}>
+                      <th class="text-left px-4 py-3 text-xs font-medium text-muted">
+                        <div class="flex items-center gap-1.5">Status
+                          <ColumnFilter columnId="resolved" label="Status" active={columnFilters()['resolved'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['resolved'] = s; else delete n['resolved']; return n; }); }} />
+                        </div>
+                      </th>
+                    </Show>
                     <th class="text-right px-4 py-3 text-xs font-medium text-muted">Actions</th>
+                    <th class="px-2 py-3"><ColumnVisibility columns={columns} onToggle={toggle} /></th>
                   </tr>
                 </thead>
                 <tbody>
                   <For each={pagedFaults()}>
                     {(fault) => (
                       <tr class="border-t border-subtle/50 hover:bg-elevated/30">
-                        <td class="px-4 py-3">
-                          <A href={`/device/${fault.serial_number}?tab=faults`} class="text-sky-400 hover:underline font-mono text-xs">
-                            {fault.serial_number}
-                          </A>
-                        </td>
-                        <td class="px-4 py-3">
-                          <span class={`font-mono font-semibold ${getFaultColor(fault.fault_code)}`}>
-                            {fault.fault_code}
-                          </span>
-                        </td>
-                        <td class="px-4 py-3 text-secondary max-w-xs truncate" title={fault.fault_string}>
-                          {fault.fault_string.length > 40 ? fault.fault_string.slice(0, 40) + '...' : fault.fault_string}
-                        </td>
-                        <td class="px-4 py-3 text-muted font-mono text-xs max-w-xs truncate hidden lg:table-cell" title={fault.parameter_name}>
-                          {fault.parameter_name || '-'}
-                        </td>
-                        <td class="px-4 py-3 text-muted text-xs hidden md:table-cell">
-                          {formatDate(fault.created_at)}
-                        </td>
-                        <td class="px-4 py-3">
-                          <span class={`badge ${fault.resolved ? 'badge-success' : 'badge-error'}`}>
-                            {fault.resolved ? 'Resolved' : 'Active'}
-                          </span>
-                        </td>
+                        <Show when={isVisible('serial_number')}>
+                          <td class="px-4 py-3">
+                            <A href={`/device/${fault.serial_number}?tab=faults`} class="text-sky-400 hover:underline font-mono text-xs">
+                              {fault.serial_number}
+                            </A>
+                          </td>
+                        </Show>
+                        <Show when={isVisible('fault_code')}>
+                          <td class="px-4 py-3">
+                            <span class={`font-mono font-semibold ${getFaultColor(fault.fault_code)}`}>
+                              {fault.fault_code}
+                            </span>
+                          </td>
+                        </Show>
+                        <Show when={isVisible('fault_string')}>
+                          <td class="px-4 py-3 text-secondary max-w-xs truncate" title={fault.fault_string}>
+                            {fault.fault_string.length > 40 ? fault.fault_string.slice(0, 40) + '...' : fault.fault_string}
+                          </td>
+                        </Show>
+                        <Show when={isVisible('parameter_name')}>
+                          <td class="px-4 py-3 text-muted font-mono text-xs max-w-xs truncate hidden lg:table-cell" title={fault.parameter_name}>
+                            {fault.parameter_name || '-'}
+                          </td>
+                        </Show>
+                        <Show when={isVisible('created_at')}>
+                          <td class="px-4 py-3 text-muted text-xs hidden md:table-cell">
+                            {formatDate(fault.created_at)}
+                          </td>
+                        </Show>
+                        <Show when={isVisible('resolved')}>
+                          <td class="px-4 py-3">
+                            <span class={`badge ${fault.resolved ? 'badge-success' : 'badge-error'}`}>
+                              {fault.resolved ? 'Resolved' : 'Active'}
+                            </span>
+                          </td>
+                        </Show>
                         <td class="px-4 py-3 text-right">
                           <div class="flex items-center justify-end gap-2">
                             <Show when={!fault.resolved && isFullAccess()}>
@@ -235,6 +270,7 @@ const Faults: Component = () => {
                             </button></Show>
                           </div>
                         </td>
+                        <td class="px-2 py-3"></td>
                       </tr>
                     )}
                   </For>

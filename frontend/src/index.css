@@ -278,6 +278,20 @@ tbody tr { transition: background-color 100ms ease; } tbody tr:hover { backgroun
 .filter-btn-apply { padding: 4px 10px; font-size: 10px; font-weight: 600; color: white; background: rgb(var(--action-primary)); border: 1px solid rgb(var(--action-primary)); border-radius: 3px; cursor: pointer; }
 .filter-btn-apply:hover { background: rgb(var(--action-primary-hover)); }
 
+/* Column visibility */
+.column-toggle { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; color: rgb(var(--text-muted)); background: transparent; border: 0; border-radius: 3px; cursor: pointer; transition: color 120ms ease, background 120ms ease; }
+.column-toggle:hover { color: rgb(var(--text-primary)); background: rgb(var(--bg-elevated)); }
+.column-dropdown { z-index: 50; width: 220px; background: rgb(var(--bg-surface)); border: 1px solid rgb(var(--border-default)); border-radius: var(--radius-control); box-shadow: 0 12px 32px rgb(0 0 0 / .28); }
+.column-dropdown-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 6px; }
+.column-dropdown-title { font-size: 11px; font-weight: 600; color: rgb(var(--text-primary)); }
+.column-dropdown-close { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; color: rgb(var(--text-muted)); background: transparent; border: 0; border-radius: 3px; cursor: pointer; }
+.column-dropdown-close:hover { color: rgb(var(--text-primary)); background: rgb(var(--bg-elevated)); }
+.column-dropdown-body { padding: 4px 8px 10px; display: grid; gap: 2px; max-height: 320px; overflow-y: auto; }
+.column-toggle-row { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 3px; cursor: pointer; font-size: 11px; color: rgb(var(--text-secondary)); }
+.column-toggle-row:hover { background: rgb(var(--bg-elevated)); }
+.column-toggle-checkbox { width: 14px; height: 14px; accent-color: rgb(var(--accent)); cursor: pointer; flex-shrink: 0; }
+.column-toggle-label { flex: 1; }
+
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 .skeleton { border-radius: 2px; background: linear-gradient(90deg, rgb(var(--bg-elevated)), rgb(var(--bg-hover)), rgb(var(--bg-elevated))); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

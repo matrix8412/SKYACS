@@ -1,13 +1,14 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createMemo, createEffect, onMount } from 'solid-js';
 import { A } from '@solidjs/router';
-import { RefreshCw, ChevronLeft, ChevronRight, Router as RouterIcon, Settings2, X, Check, GripVertical, Search, Send, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-solid';
+import { RefreshCw, Router as RouterIcon, X, Search, Send, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-solid';
 import { api, type Device } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import PageHeader from '../components/PageHeader';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import ColumnFilter from '../components/ColumnFilter';
+import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
@@ -57,7 +58,6 @@ const TagChips: Component<{ tags: string[] }> = (props) => {
 
 const Devices: Component = () => {
   const [page, setPage] = createSignal(0);
-  const [showColumnSettings, setShowColumnSettings] = createSignal(false);
   const [searchQuery, setSearchQuery] = createSignal('');
   const [columns, setColumns] = createSignal<ColumnConfig[]>([]);
   const [summoningAll, setSummoningAll] = createSignal(false);
@@ -111,50 +111,6 @@ const Devices: Component = () => {
 
   const toggleColumn = (id: string) => {
     setColumns(cols => cols.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
-  };
-
-  const [draggedCol, setDraggedCol] = createSignal<string | null>(null);
-
-  const handleDragStart = (e: DragEvent, id: string) => {
-    setDraggedCol(id);
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', id);
-    }
-  };
-
-  const handleDragOver = (e: DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-  };
-
-  const handleDrop = (e: DragEvent, targetId: string) => {
-    e.preventDefault();
-    const sourceId = draggedCol();
-    if (!sourceId || sourceId === targetId) return;
-    
-    setColumns(cols => {
-      const sorted = [...cols].sort((a, b) => a.order - b.order);
-      const sourceIdx = sorted.findIndex(c => c.id === sourceId);
-      const targetIdx = sorted.findIndex(c => c.id === targetId);
-      if (sourceIdx === -1 || targetIdx === -1) return cols;
-      
-      const [removed] = sorted.splice(sourceIdx, 1);
-      sorted.splice(targetIdx, 0, removed);
-      return sorted.map((c, i) => ({ ...c, order: i }));
-    });
-    setDraggedCol(null);
-  };
-
-  const moveColumn = (id: string, offset: -1 | 1) => {
-    setColumns((current) => {
-      const sorted = [...current].sort((a, b) => a.order - b.order);
-      const index = sorted.findIndex((column) => column.id === id);
-      const target = index + offset;
-      if (index < 0 || target < 0 || target >= sorted.length) return current;
-      [sorted[index], sorted[target]] = [sorted[target]!, sorted[index]!];
-      return sorted.map((column, order) => ({ ...column, order }));
-    });
   };
 
   const getRxPower = (device: Device) => {
@@ -359,14 +315,6 @@ const Devices: Component = () => {
             </Show>
             </div>
           </div>
-          <button onClick={() => setShowColumnSettings(!showColumnSettings())}
-            class={`btn btn-secondary ${showColumnSettings() ? 'bg-sky-500/20 text-sky-400' : ''}`}
-            aria-expanded={showColumnSettings()}
-            aria-controls="device-column-settings"
-          >
-            <Settings2 size={14} />
-            <span class="hidden sm:inline">Columns</span>
-          </button>
           <Show when={isFullAccess()}><button
             onClick={async () => {
               const list = deviceList()?.devices;
@@ -399,48 +347,6 @@ const Devices: Component = () => {
           </button>
         </div>
       </PageHeader>
-
-      {/* Column Settings Panel */}
-      <Show when={showColumnSettings()}>
-        <div id="device-column-settings" class="card p-4">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="text-sm font-medium text-secondary">Manage Columns</h3>
-            <button onClick={() => setShowColumnSettings(false)} class="icon-button" aria-label="Close column settings">
-              <X size={16} />
-            </button>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <For each={columns().sort((a, b) => a.order - b.order)}>
-              {(col) => (
-                <div
-                  draggable={true}
-                  onDragStart={(e) => handleDragStart(e, col.id)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, col.id)}
-                  class={`flex items-center gap-2 px-3 py-1.5 bg-elevated cursor-grab active:cursor-grabbing transition-all ${draggedCol() === col.id ? 'opacity-50 scale-95' : 'hover:bg-elevated/80'}`}
-                >
-                  <GripVertical size={12} class="text-muted" />
-                  <button
-                    onClick={() => toggleColumn(col.id)}
-                    class={`icon-button ${col.visible ? 'text-sky-400 border-sky-500' : ''}`}
-                    aria-label={`${col.visible ? 'Hide' : 'Show'} ${col.label} column`}
-                    aria-pressed={col.visible}
-                  >
-                    {col.visible && <Check size={10} class="text-white" />}
-                  </button>
-                  <span class={`text-sm ${col.visible ? 'text-primary' : 'text-muted'}`}>
-                    {col.label}
-                  </span>
-                  <span class="inline-flex ml-auto">
-                    <button type="button" class="icon-button" onClick={() => moveColumn(col.id, -1)} aria-label={`Move ${col.label} column left`}><ChevronLeft size={12} /></button>
-                    <button type="button" class="icon-button" onClick={() => moveColumn(col.id, 1)} aria-label={`Move ${col.label} column right`}><ChevronRight size={12} /></button>
-                  </span>
-                </div>
-              )}
-            </For>
-          </div>
-        </div>
-      </Show>
 
       <Show when={deviceList.error}>
         <div class="card"><ResourceError title="CPE inventory is unavailable" description="The inventory request failed. Check the API service status and retry without losing the current search or column settings." onRetry={() => refetch()} /></div>
@@ -498,18 +404,19 @@ const Devices: Component = () => {
                     );
                   }}
                 </For>
+                <th class="px-2 py-2"><ColumnVisibility columns={columns} onToggle={toggleColumn} /></th>
               </tr>
             </thead>
             <tbody>
               <Show
                 when={!deviceList.loading}
-                fallback={<><TableSkeleton cols={visibleColumns().length} /><TableSkeleton cols={visibleColumns().length} /><TableSkeleton cols={visibleColumns().length} /></>}
+                fallback={<><TableSkeleton cols={visibleColumns().length + 1} /><TableSkeleton cols={visibleColumns().length + 1} /><TableSkeleton cols={visibleColumns().length + 1} /></>}
               >
                 <Show
                   when={sortedDevices().length}
                   fallback={
                     <tr>
-                      <td colspan={visibleColumns().length} class="px-4 py-12 text-center">
+                      <td colspan={visibleColumns().length + 1} class="px-4 py-12 text-center">
                         <EmptyState
                           compact
                           icon={<RouterIcon size={22} />}
@@ -531,6 +438,7 @@ const Devices: Component = () => {
                             </td>
                           )}
                         </For>
+                        <td class="px-2 py-3"></td>
                       </tr>
                     )}
                   </For>

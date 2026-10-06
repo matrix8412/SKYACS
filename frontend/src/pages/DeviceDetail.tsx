@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, Show, For, createEffect, createMemo, onCleanup, onMount } from 'solid-js';
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
-import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Settings2, Check, Download } from 'lucide-solid';
+import { ArrowLeft, RefreshCw, RotateCcw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Send, Key, Eye, EyeOff, ShieldCheck, Plus, Tags, Activity, AlertTriangle, Check, Download } from 'lucide-solid';
 import { api, type MetricDefinition, type Task } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
@@ -9,6 +9,7 @@ import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import MetricChart from '../components/MetricChart';
 import ColumnFilter from '../components/ColumnFilter';
+import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { getWanProfiles, type WanProfile } from '../lib/wanProfiles';
@@ -141,9 +142,7 @@ const DeviceDetail: Component = () => {
   const [tagsLoading, setTagsLoading] = createSignal(false);
   const [paramColumnFilters, setParamColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [hostColumnFilters, setHostColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
-  const [showHostColumnSettings, setShowHostColumnSettings] = createSignal(false);
   const [hostColumns, setHostColumns] = createSignal<HostColumnConfig[]>([]);
-  const [showParamColumnSettings, setShowParamColumnSettings] = createSignal(false);
   const [paramColumns, setParamColumns] = createSignal<ParamColumnConfig[]>([]);
   const [editingConnCreds, setEditingConnCreds] = createSignal(false);
   const [connCredMode, setConnCredMode] = createSignal('inherit');
@@ -1683,34 +1682,7 @@ const DeviceDetail: Component = () => {
                   <Users size={14} />
                   Connected Hosts ({getHosts().length})
                 </h2>
-                <button
-                  type="button"
-                  class="btn btn-secondary text-xs"
-                  onClick={() => setShowHostColumnSettings(value => !value)}
-                  aria-expanded={showHostColumnSettings()}
-                  aria-controls="connected-hosts-column-settings"
-                >
-                  <Settings2 size={14} />
-                  Columns
-                </button>
               </div>
-              <Show when={showHostColumnSettings()}>
-                <div id="connected-hosts-column-settings" class="flex flex-wrap gap-2 mb-4" aria-label="Connected Hosts column visibility">
-                  <For each={hostColumns()}>
-                    {(column) => (
-                      <button
-                        type="button"
-                        onClick={() => toggleHostColumn(column.id)}
-                        class={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs ${column.visible ? 'border-sky-500/50 text-sky-400 bg-sky-500/10' : 'border-subtle text-muted'}`}
-                        aria-pressed={column.visible}
-                      >
-                        <Show when={column.visible}><Check size={12} /></Show>
-                        {column.label}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
               <Show when={!parameters.loading || (parameters()?.length ?? 0) > 0} fallback={<div class="space-y-2" aria-label="Loading connected hosts"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-2/3" /></div>}>
                 <Show when={getHosts().length > 0} fallback={
                   <EmptyState compact title="No connected hosts are reported" description="The stored parameter set contains no active LAN or Wi-Fi clients. Send a connection request with Summon to request current host data." />
@@ -1759,6 +1731,7 @@ const DeviceDetail: Component = () => {
                             <ColumnFilter columnId="uptime" label="Uptime" active={hostColumnFilters()['uptime'] || null} onApply={(s) => { setHostColumnFilters((prev) => { const n = { ...prev }; if (s) n['uptime'] = s; else delete n['uptime']; return n; }); }} />
                           </div>
                         </th></Show>
+                        <th class="px-2 py-2"><ColumnVisibility columns={hostColumns} onToggle={toggleHostColumn} /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1787,6 +1760,7 @@ const DeviceDetail: Component = () => {
                             <Show when={hostColumns().find(column => column.id === 'uptime')?.visible}><td class="px-3 py-2 text-secondary text-xs">
                               {host.uptime ? formatUptime(host.uptime) : '-'}
                             </td></Show>
+                            <td class="px-2 py-2"></td>
                           </tr>
                         )}
                       </For>
@@ -2008,16 +1982,6 @@ const DeviceDetail: Component = () => {
                   <button
                     type="button"
                     class="btn btn-secondary text-xs"
-                    onClick={() => setShowParamColumnSettings(value => !value)}
-                    aria-expanded={showParamColumnSettings()}
-                    aria-controls="all-params-column-settings"
-                  >
-                    <Settings2 size={14} />
-                    Columns
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-secondary text-xs"
                     onClick={exportParamsCSV}
                     disabled={filteredParams().length === 0}
                   >
@@ -2026,23 +1990,6 @@ const DeviceDetail: Component = () => {
                   </button>
                 </div>
               </div>
-              <Show when={showParamColumnSettings()}>
-                <div id="all-params-column-settings" class="flex flex-wrap gap-2 px-5 py-3 border-b border-subtle" aria-label="All Parameters column visibility">
-                  <For each={paramColumns()}>
-                    {(column) => (
-                      <button
-                        type="button"
-                        onClick={() => toggleParamColumn(column.id)}
-                        class={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs ${column.visible ? 'border-sky-500/50 text-sky-400 bg-sky-500/10' : 'border-subtle text-muted'}`}
-                        aria-pressed={column.visible}
-                      >
-                        <Show when={column.visible}><Check size={12} /></Show>
-                        {column.label}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
               <Show when={filteredParams().length > 0} fallback={
                 <div class="p-8 text-center">
                   <p class="text-muted text-sm">No parameters loaded yet. Click Summon to fetch.</p>
@@ -2077,6 +2024,7 @@ const DeviceDetail: Component = () => {
                             <ColumnFilter columnId="value" label="Value" active={paramColumnFilters()['value'] || null} onApply={(s) => { setParamColumnFilters((prev) => { const n = { ...prev }; if (s) n['value'] = s; else delete n['value']; return n; }); }} />
                           </div>
                         </th></Show>
+                        <th class="px-2 py-2"><ColumnVisibility columns={paramColumns} onToggle={toggleParamColumn} /></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -2093,6 +2041,7 @@ const DeviceDetail: Component = () => {
                             <Show when={paramColumns().find(c => c.id === 'value')?.visible}><td class="px-4 py-2 text-primary text-xs truncate max-w-xs">
                               {displayParameterValue(param.name, param.value).length > 100 ? displayParameterValue(param.name, param.value).slice(0, 100) + '...' : displayParameterValue(param.name, param.value)}
                             </td></Show>
+                            <td class="px-2 py-2"></td>
                           </tr>
                         )}
                       </For>
