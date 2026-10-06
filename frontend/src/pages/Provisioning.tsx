@@ -1,5 +1,5 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For, type Component } from 'solid-js';
-import { Copy, Edit2, GripVertical, MoreVertical, Plus, Settings as SettingsIcon, Trash2, X } from 'lucide-solid';
+import { Copy, Edit2, GripVertical, MoreVertical, Plus, Search, Settings as SettingsIcon, Trash2, X } from 'lucide-solid';
 import { api, type ProvisioningRule } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFeedback } from '../components/Feedback';
@@ -73,6 +73,7 @@ const Provisioning: Component = () => {
   })());
   const [provDraggedRow, setProvDraggedRow] = createSignal<number | null>(null);
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [searchQuery, setSearchQuery] = createSignal('');
 
   const getFilterValue = (rule: ProvisioningRule, colId: string): string => {
     switch (colId) {
@@ -89,7 +90,22 @@ const Provisioning: Component = () => {
   };
 
   const filteredProvRules = createMemo(() => {
-    const all = provRules() ?? [];
+    let all = provRules() ?? [];
+    const query = searchQuery().toLowerCase().trim();
+    if (query) {
+      all = all.filter(r =>
+        r.parameter_name?.toLowerCase().includes(query) ||
+        r.parameter_value?.toLowerCase().includes(query) ||
+        r.parameter_type?.toLowerCase().includes(query) ||
+        r.manufacturer?.toLowerCase().includes(query) ||
+        r.product_class?.toLowerCase().includes(query) ||
+        (r.product_classes || []).some(pc => pc.toLowerCase().includes(query)) ||
+        r.tag?.toLowerCase().includes(query) ||
+        r.phase?.toLowerCase().includes(query) ||
+        r.description?.toLowerCase().includes(query) ||
+        r.add_object_path?.toLowerCase().includes(query)
+      );
+    }
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
   const [provPage, setProvPage] = createSignal(0);
@@ -319,6 +335,13 @@ const Provisioning: Component = () => {
               <p class="text-muted text-xs mt-1">Rules are evaluated in order. The first matching rule wins for a given parameter.</p>
             </div>
             <div class="flex items-center gap-2">
+              <div class="relative">
+                <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search rules…" class="input pl-9 w-48 text-sm" />
+                <Show when={searchQuery()}>
+                  <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                </Show>
+              </div>
               <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
                 <Plus size={12} />
                 Add rule

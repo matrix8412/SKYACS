@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, createMemo, Show, For } from 'solid-js';
-import { Users, Trash2, Edit2, Plus } from 'lucide-solid';
+import { Users, Trash2, Edit2, Plus, Search, X } from 'lucide-solid';
 import { api, type User } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
@@ -28,6 +28,7 @@ const UsersPage: Component = () => {
   const [editingUser, setEditingUser] = createSignal<User | null>(null);
   const [userForm, setUserForm] = createSignal({ username: '', password: '', role: 'read' as 'full' | 'read' });
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [searchQuery, setSearchQuery] = createSignal('');
   const { columns, isVisible, toggle } = useColumnVisibility('users', [
     { id: 'username', label: 'Username', visible: true },
     { id: 'role', label: 'Role', visible: true },
@@ -47,7 +48,14 @@ const UsersPage: Component = () => {
   };
 
   const filteredUsers = createMemo(() => {
-    const all = users() || [];
+    let all = users() || [];
+    const query = searchQuery().toLowerCase().trim();
+    if (query) {
+      all = all.filter(u =>
+        u.username?.toLowerCase().includes(query) ||
+        u.role?.toLowerCase().includes(query)
+      );
+    }
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
   const pagedUsers = createMemo(() => {
@@ -118,10 +126,19 @@ const UsersPage: Component = () => {
             <Users size={14} />
             Operator management
           </h2>
-          <button onClick={openCreateUser} class="btn btn-primary text-xs py-1.5">
-            <Plus size={12} />
-            Add operator
-          </button>
+          <div class="flex items-center gap-2">
+            <div class="relative">
+              <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+              <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search users…" class="input pl-9 w-40 text-sm" />
+              <Show when={searchQuery()}>
+                <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+              </Show>
+            </div>
+            <button onClick={openCreateUser} class="btn btn-primary text-xs py-1.5">
+              <Plus size={12} />
+              Add operator
+            </button>
+          </div>
         </div>
 
         <Show when={users.error}><ResourceError title="Operator accounts are unavailable" description="SKYACS could not read the account directory. Retry before changing access." onRetry={() => refetchUsers()} /></Show>

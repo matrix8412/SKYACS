@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js';
 import { createResource, createSignal, createMemo, Show, For } from 'solid-js';
-import { Upload, Trash2, HardDrive, Package } from 'lucide-solid';
+import { Upload, Trash2, HardDrive, Package, Search, X } from 'lucide-solid';
 import { api, type Firmware } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import PageHeader from '../components/PageHeader';
@@ -20,6 +20,7 @@ const Firmwares: Component = () => {
   const [uploading, setUploading] = createSignal(false);
   const [validation, setValidation] = createSignal<{ file?: string; version?: string }>({});
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [searchQuery, setSearchQuery] = createSignal('');
   const { columns, isVisible, toggle } = useColumnVisibility('firmwares', [
     { id: 'filename', label: 'Filename', visible: true },
     { id: 'version', label: 'Version', visible: true },
@@ -43,7 +44,17 @@ const Firmwares: Component = () => {
   };
 
   const filteredFirmwares = createMemo(() => {
-    const all = firmwares() || [];
+    let all = firmwares() || [];
+    const query = searchQuery().toLowerCase().trim();
+    if (query) {
+      all = all.filter(fw =>
+        fw.filename?.toLowerCase().includes(query) ||
+        fw.version?.toLowerCase().includes(query) ||
+        fw.manufacturer?.toLowerCase().includes(query) ||
+        fw.product_class?.toLowerCase().includes(query) ||
+        fw.description?.toLowerCase().includes(query)
+      );
+    }
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
   const pagedFirmwares = createMemo(() => {
@@ -193,11 +204,18 @@ const Firmwares: Component = () => {
       </div></Show>
 
       <div class="card overflow-hidden">
-        <div class="p-5 border-b border-subtle">
+        <div class="p-5 border-b border-subtle flex items-center justify-between">
           <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
             <Package size={14} />
             Firmware Library ({firmwares()?.length || 0})
           </h2>
+          <div class="relative">
+            <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+            <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search firmware…" class="input pl-9 w-48 text-sm" />
+            <Show when={searchQuery()}>
+              <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+            </Show>
+          </div>
         </div>
         <Show when={firmwares.loading}><div class="p-4 space-y-3" aria-label="Loading firmware library"><div class="skeleton h-8 w-full" /><div class="skeleton h-8 w-4/5" /></div></Show>
         <Show when={firmwares.error}><ResourceError title="Firmware library is unavailable" description="SKYACS could not retrieve the artifact inventory. No firmware data was changed." onRetry={() => refetch()} /></Show>

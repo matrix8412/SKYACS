@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js';
 import { createSignal, createResource, createMemo, Show, For } from 'solid-js';
-import { Plus, Edit, Trash2, Activity } from 'lucide-solid';
+import { Plus, Edit, Trash2, Activity, Search, X } from 'lucide-solid';
 import { api, type MetricDefinition } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
@@ -40,6 +40,7 @@ const MetricsSettings: Component = () => {
   const [showMetricModal, setShowMetricModal] = createSignal(false);
   const [metricForm, setMetricForm] = createSignal<Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>>(EMPTY_METRIC);
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
+  const [searchQuery, setSearchQuery] = createSignal('');
   const { columns, isVisible, toggle } = useColumnVisibility('metrics', [
     { id: 'name', label: 'Name', visible: true },
     { id: 'parameter_name', label: 'Parameter', visible: true },
@@ -67,7 +68,19 @@ const MetricsSettings: Component = () => {
   };
 
   const filteredMetrics = createMemo(() => {
-    const all = metrics() || [];
+    let all = metrics() || [];
+    const query = searchQuery().toLowerCase().trim();
+    if (query) {
+      all = all.filter(m =>
+        m.name?.toLowerCase().includes(query) ||
+        m.parameter_name?.toLowerCase().includes(query) ||
+        m.device_type_match?.toLowerCase().includes(query) ||
+        m.source?.toLowerCase().includes(query) ||
+        m.unit?.toLowerCase().includes(query) ||
+        m.group?.toLowerCase().includes(query) ||
+        m.description?.toLowerCase().includes(query)
+      );
+    }
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
   const pagedMetrics = createMemo(() => {
@@ -150,12 +163,21 @@ const MetricsSettings: Component = () => {
             <Activity size={14} />
             Metric Definitions
           </h2>
-          <Show when={isFullAccess()}>
-            <button onClick={openCreateMetric} class="btn btn-primary text-xs">
-              <Plus size={12} />
-              Add metric
-            </button>
-          </Show>
+          <div class="flex items-center gap-2">
+            <div class="relative">
+              <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+              <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search metrics…" class="input pl-9 w-48 text-sm" />
+              <Show when={searchQuery()}>
+                <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+              </Show>
+            </div>
+            <Show when={isFullAccess()}>
+              <button onClick={openCreateMetric} class="btn btn-primary text-xs">
+                <Plus size={12} />
+                Add metric
+              </button>
+            </Show>
+          </div>
         </div>
         <Show when={metrics.loading}>
           <div class="skeleton h-16 w-full" />
