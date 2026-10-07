@@ -1761,7 +1761,12 @@ const DeviceDetail: Component = () => {
                                 {wlan.enabled ? 'Yes' : 'No'}
                               </button></Show>
                             </td>
-                            <td class="px-3 py-2 text-secondary">{wlan.status}</td>
+                            <td class="px-3 py-2">
+                              <span class="inline-flex items-center gap-1.5">
+                                <span class={`w-2 h-2 rounded-full ${lanStatusColor(wlan.status)}`} />
+                                <span class="text-secondary">{wlan.status}</span>
+                              </span>
+                            </td>
                             <td class="px-3 py-2">
                               <span class="text-primary font-medium">{wlan.ssid}</span>
                             </td>
