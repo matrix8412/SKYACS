@@ -13,7 +13,7 @@ import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { getWanProfiles, type WanProfile } from '../lib/wanProfiles';
-import { lanStatusColor } from '../lib/lanFields';
+import { statusBadgeClass } from '../lib/lanFields';
 import { usePageSize } from '../lib/usePageSize';
 import { appName } from '../lib/appName';
 import WifiSettingsModal from '../components/WifiSettingsModal';
@@ -1536,7 +1536,7 @@ const DeviceDetail: Component = () => {
                               <div title={wan.path}>{wan.name}</div>
                             </td>
                             <td class="px-3 py-2.5">
-                              <span class={`badge ${wan.status === 'Connected' ? 'badge-success' : wan.status === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.status}</span>
+                              <span class={`badge ${statusBadgeClass(wan.status)}`}>{wan.status}</span>
                             </td>
                             <td class="px-3 py-2.5">
                               <Show when={isFullAccess()} fallback={<span class={`badge ${wan.enable === 'Enabled' ? 'badge-success' : wan.enable === '-' ? 'badge-warning' : 'badge-error'}`}>{wan.enable}</span>}>
@@ -1668,10 +1668,7 @@ const DeviceDetail: Component = () => {
                           <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
                             <td class="px-3 py-2.5 text-primary font-medium">{lan.name}</td>
                             <td class="px-3 py-2.5">
-                              <span class="inline-flex items-center gap-1.5">
-                                <span class={`w-2 h-2 rounded-full ${lanStatusColor(lan.status)}`} />
-                                <span class="text-secondary">{lan.status}</span>
-                              </span>
+                              <span class={`badge ${statusBadgeClass(lan.status)}`}>{lan.status}</span>
                             </td>
                             <td class="px-2 py-2.5 text-center">
                               <Show when={isFullAccess()} fallback={<span class={lan.enabled ? 'text-emerald-400' : 'text-muted'}>{lan.enabled ? 'Y' : '-'}</span>}>
@@ -1762,10 +1759,7 @@ const DeviceDetail: Component = () => {
                               </button></Show>
                             </td>
                             <td class="px-3 py-2">
-                              <span class="inline-flex items-center gap-1.5">
-                                <span class={`w-2 h-2 rounded-full ${lanStatusColor(wlan.status)}`} />
-                                <span class="text-secondary">{wlan.status}</span>
-                              </span>
+                              <span class={`badge ${statusBadgeClass(wlan.status)}`}>{wlan.status}</span>
                             </td>
                             <td class="px-3 py-2">
                               <span class="text-primary font-medium">{wlan.ssid}</span>
