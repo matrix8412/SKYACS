@@ -94,7 +94,7 @@ const Faults: Component = () => {
     try {
       await api.deleteFaults(ids);
       notify({ tone: 'success', title: `${ids.length} fault record${ids.length > 1 ? 's' : ''} deleted` });
-      setSelectedFaults(new Set());
+      setSelectedFaults(new Set<number>());
       await Promise.all([refetch(), refetchStats()]);
     } catch (error) {
       notify({ tone: 'error', title: 'Could not delete faults', message: 'No local state was changed. Retry after checking the API service.', detail: (error as Error).message, persistent: true });

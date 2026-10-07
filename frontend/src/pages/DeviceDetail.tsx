@@ -174,7 +174,7 @@ const DeviceDetail: Component = () => {
     try {
       await api.deleteFaults(ids);
       notify({ tone: 'success', title: `${ids.length} fault record${ids.length > 1 ? 's' : ''} deleted` });
-      setSelectedDeviceFaults(new Set());
+      setSelectedDeviceFaults(new Set<number>());
       await refetchDeviceFaults();
     } catch (error) {
       notify({ tone: 'error', title: 'Could not delete faults', detail: (error as Error).message, persistent: true });
