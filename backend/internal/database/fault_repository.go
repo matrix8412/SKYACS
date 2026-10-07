@@ -74,6 +74,14 @@ func (r *FaultRepository) Delete(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Delete(&models.Fault{}, id).Error
 }
 
+func (r *FaultRepository) DeleteMany(ctx context.Context, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := r.db.WithContext(ctx).Delete(&models.Fault{}, ids)
+	return result.RowsAffected, result.Error
+}
+
 func (r *FaultRepository) GetStats(ctx context.Context) (map[string]int, error) {
 	var active, resolved, total int64
 

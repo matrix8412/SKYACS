@@ -103,6 +103,7 @@ export const api = {
   getFaultStats: () => request<{ total: number; active: number; resolved: number }>('/faults/stats'),
   resolveFault: (id: number) => request<{ status: string }>(`/faults/${id}/resolve`, { method: 'POST' }),
   deleteFault: (id: number) => request<{ status: string }>(`/faults/${id}`, { method: 'DELETE' }),
+  deleteFaults: (ids: number[]) => request<{ deleted: number }>('/faults/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
 
   getMeta: () => request<{ app_name: string }>('/meta'),
   getSettings: () => request<Record<string, string>>('/settings'),

@@ -159,6 +159,7 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("GET /faults/stats", r.handleFaultStats)
 	apiMux.HandleFunc("POST /faults/{id}/resolve", auth.RequireFullAccess(r.handleResolveFault))
 	apiMux.HandleFunc("DELETE /faults/{id}", auth.RequireFullAccess(r.handleDeleteFault))
+	apiMux.HandleFunc("POST /faults/bulk-delete", auth.RequireFullAccess(r.handleBulkDeleteFaults))
 
 	// Provisioning endpoints
 	apiMux.HandleFunc("GET /provisioning", r.handleListProvisioningRules)
@@ -1902,6 +1903,29 @@ func (r *Router) handleDeleteFault(w http.ResponseWriter, req *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (r *Router) handleBulkDeleteFaults(w http.ResponseWriter, req *http.Request) {
+	var body struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if len(body.IDs) == 0 {
+		respondError(w, http.StatusBadRequest, "No fault IDs provided")
+		return
+	}
+
+	deleted, err := r.faultRepo.DeleteMany(req.Context(), body.IDs)
+	if err != nil {
+		log.Printf("Error bulk-deleting faults: %v", err)
+		respondError(w, http.StatusInternalServerError, "Failed to delete faults")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]int64{"deleted": deleted})
 }
 
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {

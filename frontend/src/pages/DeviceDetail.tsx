@@ -163,6 +163,50 @@ const DeviceDetail: Component = () => {
     } finally { setPendingFault(null); }
   };
 
+  const [selectedDeviceFaults, setSelectedDeviceFaults] = createSignal<Set<number>>(new Set());
+  const [bulkDeletingFaults, setBulkDeletingFaults] = createSignal(false);
+
+  const handleBulkDeleteFaults = async () => {
+    const ids = [...selectedDeviceFaults()];
+    if (ids.length === 0) return;
+    if (!await confirm({ title: `Delete ${ids.length} fault record${ids.length > 1 ? 's' : ''}?`, description: 'This permanently removes the selected protocol faults from the operational history. This action cannot be undone.', confirmLabel: 'Delete faults', tone: 'danger' })) return;
+    setBulkDeletingFaults(true);
+    try {
+      await api.deleteFaults(ids);
+      notify({ tone: 'success', title: `${ids.length} fault record${ids.length > 1 ? 's' : ''} deleted` });
+      setSelectedDeviceFaults(new Set());
+      await refetchDeviceFaults();
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not delete faults', detail: (error as Error).message, persistent: true });
+    } finally { setBulkDeletingFaults(false); }
+  };
+
+  const toggleSelectDeviceFault = (id: number) => {
+    setSelectedDeviceFaults(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allDeviceFaultsSelected = createMemo(() => {
+    const page = pagedDeviceFaults();
+    return page.length > 0 && page.every(f => selectedDeviceFaults().has(f.id));
+  });
+
+  const toggleSelectAllDeviceFaults = () => {
+    setSelectedDeviceFaults(prev => {
+      const next = new Set(prev);
+      const page = pagedDeviceFaults();
+      if (page.every(f => next.has(f.id))) {
+        page.forEach(f => next.delete(f.id));
+      } else {
+        page.forEach(f => next.add(f.id));
+      }
+      return next;
+    });
+  };
+
   const [actionLoading, setActionLoading] = createSignal<string | null>(null);
   const [showActionsMenu, setShowActionsMenu] = createSignal(false);
   let actionsMenu: HTMLDivElement | undefined;
@@ -1999,12 +2043,20 @@ const DeviceDetail: Component = () => {
                   <AlertTriangle size={14} />
                   CWMP Faults ({deviceFaults()?.length || 0})
                 </h2>
-                <div class="relative">
-                  <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-                  <input type="text" value={faultSearch()} onInput={(e) => setFaultSearch(e.currentTarget.value)} placeholder="Search faults…" class="input pl-9! w-48 text-sm" />
-                  <Show when={faultSearch()}>
-                    <button onClick={() => setFaultSearch('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                <div class="flex items-center gap-3">
+                  <Show when={isFullAccess() && selectedDeviceFaults().size > 0}>
+                    <button onClick={handleBulkDeleteFaults} class="btn btn-danger" disabled={bulkDeletingFaults()}>
+                      <Trash2 size={14} />
+                      Delete selected ({selectedDeviceFaults().size})
+                    </button>
                   </Show>
+                  <div class="relative">
+                    <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                    <input type="text" value={faultSearch()} onInput={(e) => setFaultSearch(e.currentTarget.value)} placeholder="Search faults…" class="input pl-9! w-48 text-sm" />
+                    <Show when={faultSearch()}>
+                      <button onClick={() => setFaultSearch('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                    </Show>
+                  </div>
                 </div>
               </div>
               <Show when={deviceFaults.loading} fallback={
@@ -2015,6 +2067,11 @@ const DeviceDetail: Component = () => {
                     <table class="data-table w-full text-sm min-w-[680px]">
                       <thead class="bg-base sticky top-0 z-10">
                         <tr class="bg-base">
+                          <Show when={isFullAccess()}>
+                            <th class="px-3 py-2 w-8">
+                              <input type="checkbox" class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" checked={allDeviceFaultsSelected()} onChange={toggleSelectAllDeviceFaults} aria-label="Select all faults on this page" />
+                            </th>
+                          </Show>
                           <th class="text-left px-4 py-2 text-xs font-medium text-muted">
                             <div class="flex items-center gap-1.5">Code
                               <ColumnFilter columnId="code" label="Code" active={deviceFaultColumnFilters()['code'] || null} onApply={(s) => { setDeviceFaultColumnFilters((prev) => { const n = { ...prev }; if (s) n['code'] = s; else delete n['code']; return n; }); }} />
@@ -2047,6 +2104,11 @@ const DeviceDetail: Component = () => {
                         <For each={pagedDeviceFaults()}>
                           {(fault) => (
                             <tr class="border-t border-subtle/50 hover:bg-elevated/30">
+                              <Show when={isFullAccess()}>
+                                <td class="px-3 py-2">
+                                  <input type="checkbox" class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" checked={selectedDeviceFaults().has(fault.id)} onChange={() => toggleSelectDeviceFault(fault.id)} aria-label={`Select fault ${fault.fault_code}`} />
+                                </td>
+                              </Show>
                               <td class="px-4 py-2">
                                 <span class={`font-mono font-semibold ${parseInt(fault.fault_code) >= 9000 ? 'text-rose-400' : parseInt(fault.fault_code) >= 8000 ? 'text-amber-400' : 'text-sky-400'}`}>
                                   {fault.fault_code}

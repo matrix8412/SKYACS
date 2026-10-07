@@ -19,6 +19,8 @@ const Faults: Component = () => {
   const { confirm, notify } = useFeedback();
   const [filter, setFilter] = createSignal<'all' | 'active' | 'resolved'>('active');
   const [pendingFault, setPendingFault] = createSignal<number | null>(null);
+  const [selectedFaults, setSelectedFaults] = createSignal<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = createSignal(false);
   const [faults, { refetch }] = createResource(
     () => filter(),
     (selected) => api.getFaults(selected)
@@ -84,6 +86,47 @@ const Faults: Component = () => {
     } finally { setPendingFault(null); }
   };
 
+  const handleBulkDelete = async () => {
+    const ids = [...selectedFaults()];
+    if (ids.length === 0) return;
+    if (!await confirm({ title: `Delete ${ids.length} fault record${ids.length > 1 ? 's' : ''}?`, description: 'This permanently removes the selected protocol faults from the operational history. This action cannot be undone.', confirmLabel: 'Delete faults', tone: 'danger' })) return;
+    setBulkDeleting(true);
+    try {
+      await api.deleteFaults(ids);
+      notify({ tone: 'success', title: `${ids.length} fault record${ids.length > 1 ? 's' : ''} deleted` });
+      setSelectedFaults(new Set());
+      await Promise.all([refetch(), refetchStats()]);
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not delete faults', message: 'No local state was changed. Retry after checking the API service.', detail: (error as Error).message, persistent: true });
+    } finally { setBulkDeleting(false); }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedFaults(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allPageSelected = createMemo(() => {
+    const page = pagedFaults();
+    return page.length > 0 && page.every(f => selectedFaults().has(f.id));
+  });
+
+  const toggleSelectAll = () => {
+    setSelectedFaults(prev => {
+      const next = new Set(prev);
+      const page = pagedFaults();
+      if (page.every(f => next.has(f.id))) {
+        page.forEach(f => next.delete(f.id));
+      } else {
+        page.forEach(f => next.add(f.id));
+      }
+      return next;
+    });
+  };
+
   const formatDate = (date: string) => {
     return new Date(date).toLocaleString('id-ID');
   };
@@ -98,6 +141,12 @@ const Faults: Component = () => {
   return (
     <div class="space-y-6">
       <PageHeader title="Fault center" description="Investigate and resolve device-side protocol failures.">
+        <Show when={isFullAccess() && selectedFaults().size > 0}>
+          <button onClick={handleBulkDelete} class="btn btn-danger" disabled={bulkDeleting()}>
+            <Trash2 size={14} />
+            Delete selected ({selectedFaults().size})
+          </button>
+        </Show>
         <button onClick={() => { refetch(); refetchStats(); }} class="btn btn-secondary" disabled={faults.loading || stats.loading}>
           <RefreshCw size={14} />
           Refresh
@@ -162,6 +211,11 @@ const Faults: Component = () => {
               <table class="data-table w-full text-sm min-w-[700px]">
                 <thead>
                   <tr class="border-b border-subtle bg-surface/50">
+                    <Show when={isFullAccess()}>
+                      <th class="px-3 py-3 w-8">
+                        <input type="checkbox" class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" checked={allPageSelected()} onChange={toggleSelectAll} aria-label="Select all faults on this page" />
+                      </th>
+                    </Show>
                     <Show when={isVisible('serial_number')}>
                       <th class="text-left px-4 py-3 text-xs font-medium text-muted">
                         <div class="flex items-center gap-1.5">Device
@@ -212,6 +266,11 @@ const Faults: Component = () => {
                   <For each={pagedFaults()}>
                     {(fault) => (
                       <tr class="border-t border-subtle/50 hover:bg-elevated/30">
+                        <Show when={isFullAccess()}>
+                          <td class="px-3 py-3">
+                            <input type="checkbox" class="accent-emerald-500 w-3.5 h-3.5 cursor-pointer" checked={selectedFaults().has(fault.id)} onChange={() => toggleSelect(fault.id)} aria-label={`Select fault ${fault.fault_code}`} />
+                          </td>
+                        </Show>
                         <Show when={isVisible('serial_number')}>
                           <td class="px-4 py-3">
                             <A href={`/device/${fault.serial_number}?tab=faults`} class="text-sky-400 hover:underline font-mono text-xs">
