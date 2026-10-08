@@ -16,7 +16,7 @@ import { useColumnVisibility } from '../lib/useColumnVisibility';
 import RolesTab from './RolesTab';
 
 const UsersPage: Component = () => {
-  const { isFullAccess, hasPermission } = useAuth();
+  const { hasPermission } = useAuth();
   const { confirm, notify } = useFeedback();
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
   const [activeTab, setActiveTab] = createSignal<'users' | 'roles'>('users');

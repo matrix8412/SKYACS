@@ -88,6 +88,26 @@ const RolesTab: Component = () => {
     }
   };
 
+  const handleDeleteRole = async (role: Role) => {
+    const confirmed = await confirm({
+      title: 'Delete role',
+      description: `Delete the "${role.name}" role? Users assigned to it will lose those permissions.`,
+      confirmLabel: 'Delete role',
+      tone: 'danger',
+    });
+    if (!confirmed || pendingAction()) return;
+    setPendingAction('delete-role');
+    try {
+      await api.deleteRole(role.id);
+      notify({ tone: 'success', title: 'Role deleted', message: role.name });
+      refetchRoles();
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not delete role', message: 'The role was not deleted.', detail: (error as Error).message });
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   return (
     <div>
       <div class="flex items-center justify-between mb-4">
@@ -100,7 +120,7 @@ const RolesTab: Component = () => {
       </div>
 
       <Show when={roles.error}>
-        <ResourceError message={(roles.error as Error).message} onRetry={refetchRoles} />
+        <ResourceError title="Roles are unavailable" description="SKYACS could not read the role definitions. Retry before managing permissions." onRetry={refetchRoles} />
       </Show>
 
       <Show when={!roles.loading && !roles.error}>
