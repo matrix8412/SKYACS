@@ -30,7 +30,8 @@ export interface DeviceParameter { id: number; device_id: number; name: string; 
 export interface Task { id: number; device_id: number; type: string; payload: unknown; status: string; result: unknown; error_message?: string; created_at: string; sent_at?: string; completed_at?: string; created_by?: string }
 export interface Firmware { id: number; filename: string; version: string; manufacturer?: string; product_class?: string; file_size: number; checksum?: string; description?: string; created_at: string; updated_at: string }
 export interface Fault { id: number; device_id: number; serial_number: string; fault_code: string; fault_string: string; parameter_name: string; resolved: boolean; created_at: string; resolved_at: string | null }
-export interface User { id: number; username: string; role: 'full' | 'read'; created_at: string; last_login: string | null }
+export interface User { id: number; username: string; role: 'full' | 'read'; role_id: number | null; created_at: string; last_login: string | null }
+export interface Role { id: number; name: string; description: string; permissions: string[]; is_system: boolean; created_at: string; updated_at: string }
 export interface ProvisioningRule { id: number; parameter_name: string; parameter_value: string; parameter_type: string; phase: string; manufacturer: string; product_class: string; product_classes?: string[]; tag: string; enabled: boolean; description: string; add_object_path?: string; order: number; condition?: string }
 export interface AuditLog { id: number; user_id?: number; username: string; action: string; resource: string; status: number; ip_address: string; user_agent?: string; created_at: string }
 export interface BlockedDevice { id: number; serial_number: string; reason: string; created_by: string; created_at: string }
@@ -109,9 +110,13 @@ export const api = {
   getSettings: () => request<Record<string, string>>('/settings'),
   updateSettings: (settings: Record<string, string>) => request<{ status: string }>('/settings', { method: 'PUT', body: JSON.stringify(settings) }),
   getUsers: () => request<User[]>('/users'),
-  createUser: (body: { username: string; password: string; role: 'full' | 'read' }) => request<User>('/users', { method: 'POST', body: JSON.stringify(body) }),
-  updateUser: (id: number, body: Partial<{ username: string; password: string; role: 'full' | 'read' }>) => request<User>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  createUser: (body: { username: string; password: string; role: 'full' | 'read'; role_id?: number }) => request<User>('/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (id: number, body: Partial<{ username: string; password: string; role: 'full' | 'read'; role_id: number }>) => request<User>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteUser: (id: number) => request<{ status: string }>(`/users/${id}`, { method: 'DELETE' }),
+  getRoles: () => request<Role[]>('/roles'),
+  createRole: (body: { name: string; description: string; permissions: string[] }) => request<Role>('/roles', { method: 'POST', body: JSON.stringify(body) }),
+  updateRole: (id: number, body: Partial<{ name: string; description: string; permissions: string[] }>) => request<Role>(`/roles/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteRole: (id: number) => request<{ status: string }>(`/roles/${id}`, { method: 'DELETE' }),
   changePassword: (currentPassword: string, newPassword: string) => request<{ status: string }>('/auth/change-password', { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }),
   getProvisioningRules: () => request<ProvisioningRule[]>('/provisioning'),
   createProvisioningRule: (body: Omit<ProvisioningRule, 'id'>) => request<ProvisioningRule>('/provisioning', { method: 'POST', body: JSON.stringify(body) }),

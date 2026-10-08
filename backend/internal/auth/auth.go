@@ -36,6 +36,7 @@ type Claims struct {
 	UserID       int64           `json:"user_id"`
 	Username     string          `json:"username"`
 	Role         models.UserRole `json:"role"`
+	RoleID       int64           `json:"role_id"`
 	TokenVersion uint64          `json:"token_version"`
 	jwt.RegisteredClaims
 }
@@ -51,10 +52,15 @@ func CheckPassword(password, hash string) bool {
 }
 
 func GenerateToken(user *models.User) (string, error) {
+	var roleID int64
+	if user.RoleID != nil {
+		roleID = *user.RoleID
+	}
 	claims := &Claims{
 		UserID:       user.ID,
 		Username:     user.Username,
 		Role:         user.Role,
+		RoleID:       roleID,
 		TokenVersion: user.TokenVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
@@ -101,7 +107,14 @@ type UserLookup interface {
 	GetByID(context.Context, int64) (*models.User, error)
 }
 
-func AuthMiddleware(users UserLookup, next http.Handler) http.Handler {
+// PermissionLookup resolves the permission keys for a role ID.
+type PermissionLookup interface {
+	GetPermissions(context.Context, int64) ([]string, error)
+}
+
+const PermissionsContextKey contextKey = "permissions"
+
+func AuthMiddleware(users UserLookup, perms PermissionLookup, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
@@ -127,6 +140,15 @@ func AuthMiddleware(users UserLookup, next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), UserContextKey, claims)
+
+		// Resolve permissions from the role.
+		if perms != nil && claims.RoleID != 0 {
+			permissionList, permErr := perms.GetPermissions(r.Context(), claims.RoleID)
+			if permErr == nil && permissionList != nil {
+				ctx = context.WithValue(ctx, PermissionsContextKey, permissionList)
+			}
+		}
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -143,6 +165,50 @@ func GetUserFromContext(ctx context.Context) *Claims {
 		return nil
 	}
 	return claims
+}
+
+// GetPermissionsFromContext returns the permission keys stored in the request context.
+func GetPermissionsFromContext(ctx context.Context) []string {
+	perms, ok := ctx.Value(PermissionsContextKey).([]string)
+	if !ok {
+		return nil
+	}
+	return perms
+}
+
+// RequirePermission returns a middleware that checks whether the authenticated user
+// has the given permission key. Falls back to the legacy RoleFull check for tokens
+// that predate the RoleID field.
+func RequirePermission(perm string) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			claims := GetUserFromContext(r.Context())
+			if claims == nil {
+				writeAuthError(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+
+			perms := GetPermissionsFromContext(r.Context())
+			if perms != nil {
+				for _, p := range perms {
+					if p == perm {
+						next(w, r)
+						return
+					}
+				}
+				writeAuthError(w, `{"error":"forbidden - insufficient permissions"}`, http.StatusForbidden)
+				return
+			}
+
+			// Fallback for legacy tokens without RoleID.
+			if claims.Role == models.RoleFull {
+				next(w, r)
+				return
+			}
+
+			writeAuthError(w, `{"error":"forbidden - insufficient permissions"}`, http.StatusForbidden)
+		}
+	}
 }
 
 func RequireFullAccess(next http.HandlerFunc) http.HandlerFunc {

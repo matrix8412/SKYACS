@@ -7,6 +7,8 @@ interface AuthContextType {
   ready: Accessor<boolean>;
   isAuthenticated: Accessor<boolean>;
   isFullAccess: Accessor<boolean>;
+  permissions: Accessor<string[]>;
+  hasPermission: (perm: string) => boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -17,16 +19,20 @@ export const AuthProvider: ParentComponent = (props) => {
   const [user, setUser] = createSignal<User | null>(null);
   const [token, setToken] = createSignal<string | null>(getStoredToken());
   const [ready, setReady] = createSignal(false);
+  const [permissions, setPermissions] = createSignal<string[]>([]);
 
   const isAuthenticated = () => Boolean(token());
   const isFullAccess = () => user()?.role === 'full';
+  const hasPermission = (perm: string) => permissions().includes(perm);
 
   onMount(async () => {
     // Remove legacy persistent tokens: authentication should not survive a closed browser session.
     localStorage.removeItem('token');
     if (token()) {
       try {
-        setUser(await request<User>('/auth/me'));
+        const data = await request<{ user: User; permissions: string[] | null }>('/auth/me');
+        setUser(data.user);
+        setPermissions(data.permissions || []);
       } catch {
         clearStoredSession();
         setToken(null);
@@ -47,17 +53,19 @@ export const AuthProvider: ParentComponent = (props) => {
     sessionStorage.setItem('skyacs_token', body.token);
     setToken(body.token);
     setUser(body.user);
+    setPermissions(body.permissions || []);
   };
 
   const logout = () => {
     clearStoredSession();
     setToken(null);
     setUser(null);
+    setPermissions([]);
     window.location.assign('/login');
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, ready, isAuthenticated, isFullAccess, login, logout }}>
+    <AuthContext.Provider value={{ user, token, ready, isAuthenticated, isFullAccess, permissions, hasPermission, login, logout }}>
       {props.children}
     </AuthContext.Provider>
   );

@@ -71,7 +71,7 @@ func TestAuthMiddlewareRejectsRevokedToken(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	recorder := httptest.NewRecorder()
-	AuthMiddleware(userLookupStub{user: &models.User{ID: 7, Username: "admin", Role: models.RoleFull, TokenVersion: 2}}, next).ServeHTTP(recorder, req)
+	AuthMiddleware(userLookupStub{user: &models.User{ID: 7, Username: "admin", Role: models.RoleFull, TokenVersion: 2}}, nil, next).ServeHTTP(recorder, req)
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked token returned status %d", recorder.Code)
 	}

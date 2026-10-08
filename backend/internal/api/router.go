@@ -39,6 +39,7 @@ type Router struct {
 	firmwareRepo     *database.FirmwareRepository
 	faultRepo        *database.FaultRepository
 	userRepo         *database.UserRepository
+	roleRepo         *database.RoleRepository
 	provisioningRepo *database.ProvisioningRepository
 	auditRepo        *database.AuditRepository
 	blockedRepo      *database.BlockedDeviceRepository
@@ -79,6 +80,7 @@ func NewRouter(db *gorm.DB) *Router {
 		firmwareRepo:     database.NewFirmwareRepository(db),
 		faultRepo:        database.NewFaultRepository(db),
 		userRepo:         database.NewUserRepository(db),
+		roleRepo:         database.NewRoleRepository(db),
 		provisioningRepo: database.NewProvisioningRepository(db),
 		auditRepo:        database.NewAuditRepository(db),
 		blockedRepo:      database.NewBlockedDeviceRepository(db),
@@ -106,85 +108,91 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("GET /auth/me", r.handleAuthMe)
 	apiMux.HandleFunc("POST /auth/change-password", r.handleChangePassword)
 
-	// User management (full access only)
-	apiMux.HandleFunc("GET /users", r.handleListUsers)
-	apiMux.HandleFunc("POST /users", auth.RequireFullAccess(r.handleCreateUser))
-	apiMux.HandleFunc("PUT /users/{id}", auth.RequireFullAccess(r.handleUpdateUser))
-	apiMux.HandleFunc("DELETE /users/{id}", auth.RequireFullAccess(r.handleDeleteUser))
+	// User management
+	apiMux.HandleFunc("GET /users", auth.RequirePermission(models.PermUsersRead)(r.handleListUsers))
+	apiMux.HandleFunc("POST /users", auth.RequirePermission(models.PermUsersWrite)(r.handleCreateUser))
+	apiMux.HandleFunc("PUT /users/{id}", auth.RequirePermission(models.PermUsersWrite)(r.handleUpdateUser))
+	apiMux.HandleFunc("DELETE /users/{id}", auth.RequirePermission(models.PermUsersWrite)(r.handleDeleteUser))
+
+	// Role management
+	apiMux.HandleFunc("GET /roles", auth.RequirePermission(models.PermRolesRead)(r.handleListRoles))
+	apiMux.HandleFunc("POST /roles", auth.RequirePermission(models.PermRolesWrite)(r.handleCreateRole))
+	apiMux.HandleFunc("PUT /roles/{id}", auth.RequirePermission(models.PermRolesWrite)(r.handleUpdateRole))
+	apiMux.HandleFunc("DELETE /roles/{id}", auth.RequirePermission(models.PermRolesWrite)(r.handleDeleteRole))
 
 	// Device endpoints (by ID - legacy)
-	apiMux.HandleFunc("GET /devices", r.handleListDevices)
-	apiMux.HandleFunc("GET /devices/stats", r.handleDeviceStats)
-	apiMux.HandleFunc("GET /devices/analytics", r.handleDeviceAnalytics)
-	apiMux.HandleFunc("GET /devices/{id}", r.handleGetDevice)
-	apiMux.HandleFunc("DELETE /devices/{id}", auth.RequireFullAccess(r.handleDeleteDevice))
-	apiMux.HandleFunc("GET /devices/{id}/parameters", r.handleGetDeviceParameters)
-	apiMux.HandleFunc("GET /devices/{id}/tasks", r.handleGetDeviceTasks)
+	apiMux.HandleFunc("GET /devices", auth.RequirePermission(models.PermDevicesRead)(r.handleListDevices))
+	apiMux.HandleFunc("GET /devices/stats", auth.RequirePermission(models.PermDevicesRead)(r.handleDeviceStats))
+	apiMux.HandleFunc("GET /devices/analytics", auth.RequirePermission(models.PermDevicesRead)(r.handleDeviceAnalytics))
+	apiMux.HandleFunc("GET /devices/{id}", auth.RequirePermission(models.PermDevicesRead)(r.handleGetDevice))
+	apiMux.HandleFunc("DELETE /devices/{id}", auth.RequirePermission(models.PermDevicesWrite)(r.handleDeleteDevice))
+	apiMux.HandleFunc("GET /devices/{id}/parameters", auth.RequirePermission(models.PermDevicesRead)(r.handleGetDeviceParameters))
+	apiMux.HandleFunc("GET /devices/{id}/tasks", auth.RequirePermission(models.PermDevicesRead)(r.handleGetDeviceTasks))
 
 	// Device actions (by ID - legacy)
-	apiMux.HandleFunc("POST /devices/{id}/get-parameters", auth.RequireFullAccess(r.handleGetParameterValues))
-	apiMux.HandleFunc("POST /devices/{id}/set-parameters", auth.RequireFullAccess(r.handleSetParameterValues))
-	apiMux.HandleFunc("POST /devices/{id}/reboot", auth.RequireFullAccess(r.handleReboot))
-	apiMux.HandleFunc("POST /devices/{id}/factory-reset", auth.RequireFullAccess(r.handleFactoryReset))
-	apiMux.HandleFunc("POST /devices/{id}/connection-request", auth.RequireFullAccess(r.handleConnectionRequest))
-	apiMux.HandleFunc("POST /devices/{id}/download-firmware", auth.RequireFullAccess(r.handleDownloadFirmware))
+	apiMux.HandleFunc("POST /devices/{id}/get-parameters", auth.RequirePermission(models.PermDevicesWrite)(r.handleGetParameterValues))
+	apiMux.HandleFunc("POST /devices/{id}/set-parameters", auth.RequirePermission(models.PermDevicesWrite)(r.handleSetParameterValues))
+	apiMux.HandleFunc("POST /devices/{id}/reboot", auth.RequirePermission(models.PermDevicesWrite)(r.handleReboot))
+	apiMux.HandleFunc("POST /devices/{id}/factory-reset", auth.RequirePermission(models.PermDevicesWrite)(r.handleFactoryReset))
+	apiMux.HandleFunc("POST /devices/{id}/connection-request", auth.RequirePermission(models.PermDevicesWrite)(r.handleConnectionRequest))
+	apiMux.HandleFunc("POST /devices/{id}/download-firmware", auth.RequirePermission(models.PermDevicesWrite)(r.handleDownloadFirmware))
 
 	// Device endpoints (by serial - new)
-	apiMux.HandleFunc("GET /device/{serial}", r.handleGetDeviceBySerial)
-	apiMux.HandleFunc("DELETE /device/{serial}", auth.RequireFullAccess(r.handleDeleteDeviceBySerial))
-	apiMux.HandleFunc("GET /device/{serial}/parameters", r.handleGetDeviceParametersBySerial)
-	apiMux.HandleFunc("GET /device/{serial}/tasks", r.handleGetDeviceTasksBySerial)
-	apiMux.HandleFunc("GET /device/{serial}/faults", r.handleGetDeviceFaultsBySerial)
-	apiMux.HandleFunc("PUT /device/{serial}/tags", auth.RequireFullAccess(r.handleSetDeviceTagsBySerial))
-	apiMux.HandleFunc("POST /device/{serial}/get-parameters", auth.RequireFullAccess(r.handleGetParameterValuesBySerial))
-	apiMux.HandleFunc("POST /device/{serial}/set-parameters", auth.RequireFullAccess(r.handleSetParameterValuesBySerial))
-	apiMux.HandleFunc("POST /device/{serial}/reboot", auth.RequireFullAccess(r.handleRebootBySerial))
-	apiMux.HandleFunc("POST /device/{serial}/factory-reset", auth.RequireFullAccess(r.handleFactoryResetBySerial))
-	apiMux.HandleFunc("POST /device/{serial}/connection-request", auth.RequireFullAccess(r.handleConnectionRequestBySerial))
-	apiMux.HandleFunc("POST /device/{serial}/download-firmware", auth.RequireFullAccess(r.handleDownloadFirmwareBySerial))
-	apiMux.HandleFunc("PATCH /device/{serial}/conn-credentials", auth.RequireFullAccess(r.handleUpdateDeviceConnCredentials))
-	apiMux.HandleFunc("POST /device/{serial}/conn-credentials/generate", auth.RequireFullAccess(r.handleGenerateDeviceConnCredentials))
+	apiMux.HandleFunc("GET /device/{serial}", auth.RequirePermission(models.PermDevicesRead)(r.handleGetDeviceBySerial))
+	apiMux.HandleFunc("DELETE /device/{serial}", auth.RequirePermission(models.PermDevicesWrite)(r.handleDeleteDeviceBySerial))
+	apiMux.HandleFunc("GET /device/{serial}/parameters", auth.RequirePermission(models.PermDevicesRead)(r.handleGetDeviceParametersBySerial))
+	apiMux.HandleFunc("GET /device/{serial}/tasks", auth.RequirePermission(models.PermDevicesRead)(r.handleGetDeviceTasksBySerial))
+	apiMux.HandleFunc("GET /device/{serial}/faults", auth.RequirePermission(models.PermDevicesRead)(r.handleGetDeviceFaultsBySerial))
+	apiMux.HandleFunc("PUT /device/{serial}/tags", auth.RequirePermission(models.PermDevicesWrite)(r.handleSetDeviceTagsBySerial))
+	apiMux.HandleFunc("POST /device/{serial}/get-parameters", auth.RequirePermission(models.PermDevicesWrite)(r.handleGetParameterValuesBySerial))
+	apiMux.HandleFunc("POST /device/{serial}/set-parameters", auth.RequirePermission(models.PermDevicesWrite)(r.handleSetParameterValuesBySerial))
+	apiMux.HandleFunc("POST /device/{serial}/reboot", auth.RequirePermission(models.PermDevicesWrite)(r.handleRebootBySerial))
+	apiMux.HandleFunc("POST /device/{serial}/factory-reset", auth.RequirePermission(models.PermDevicesWrite)(r.handleFactoryResetBySerial))
+	apiMux.HandleFunc("POST /device/{serial}/connection-request", auth.RequirePermission(models.PermDevicesWrite)(r.handleConnectionRequestBySerial))
+	apiMux.HandleFunc("POST /device/{serial}/download-firmware", auth.RequirePermission(models.PermDevicesWrite)(r.handleDownloadFirmwareBySerial))
+	apiMux.HandleFunc("PATCH /device/{serial}/conn-credentials", auth.RequirePermission(models.PermDevicesWrite)(r.handleUpdateDeviceConnCredentials))
+	apiMux.HandleFunc("POST /device/{serial}/conn-credentials/generate", auth.RequirePermission(models.PermDevicesWrite)(r.handleGenerateDeviceConnCredentials))
 
 	// Firmware endpoints
-	apiMux.HandleFunc("GET /firmwares", r.handleListFirmwares)
-	apiMux.HandleFunc("POST /firmwares", auth.RequireFullAccess(r.handleUploadFirmware))
-	apiMux.HandleFunc("DELETE /firmwares/{id}", auth.RequireFullAccess(r.handleDeleteFirmware))
+	apiMux.HandleFunc("GET /firmwares", auth.RequirePermission(models.PermFirmwaresRead)(r.handleListFirmwares))
+	apiMux.HandleFunc("POST /firmwares", auth.RequirePermission(models.PermFirmwaresWrite)(r.handleUploadFirmware))
+	apiMux.HandleFunc("DELETE /firmwares/{id}", auth.RequirePermission(models.PermFirmwaresWrite)(r.handleDeleteFirmware))
 
 	// Settings endpoints
-	apiMux.HandleFunc("GET /settings", r.handleGetSettings)
-	apiMux.HandleFunc("PUT /settings", auth.RequireFullAccess(r.handleUpdateSettings))
+	apiMux.HandleFunc("GET /settings", auth.RequirePermission(models.PermSettingsRead)(r.handleGetSettings))
+	apiMux.HandleFunc("PUT /settings", auth.RequirePermission(models.PermSettingsWrite)(r.handleUpdateSettings))
 
 	// Faults endpoints
-	apiMux.HandleFunc("GET /faults", r.handleListFaults)
-	apiMux.HandleFunc("GET /faults/stats", r.handleFaultStats)
-	apiMux.HandleFunc("POST /faults/{id}/resolve", auth.RequireFullAccess(r.handleResolveFault))
-	apiMux.HandleFunc("DELETE /faults/{id}", auth.RequireFullAccess(r.handleDeleteFault))
-	apiMux.HandleFunc("POST /faults/bulk-delete", auth.RequireFullAccess(r.handleBulkDeleteFaults))
+	apiMux.HandleFunc("GET /faults", auth.RequirePermission(models.PermFaultsRead)(r.handleListFaults))
+	apiMux.HandleFunc("GET /faults/stats", auth.RequirePermission(models.PermFaultsRead)(r.handleFaultStats))
+	apiMux.HandleFunc("POST /faults/{id}/resolve", auth.RequirePermission(models.PermFaultsWrite)(r.handleResolveFault))
+	apiMux.HandleFunc("DELETE /faults/{id}", auth.RequirePermission(models.PermFaultsWrite)(r.handleDeleteFault))
+	apiMux.HandleFunc("POST /faults/bulk-delete", auth.RequirePermission(models.PermFaultsWrite)(r.handleBulkDeleteFaults))
 
 	// Provisioning endpoints
-	apiMux.HandleFunc("GET /provisioning", r.handleListProvisioningRules)
-	apiMux.HandleFunc("POST /provisioning", auth.RequireFullAccess(r.handleCreateProvisioningRule))
-	apiMux.HandleFunc("PUT /provisioning/{id}", auth.RequireFullAccess(r.handleUpdateProvisioningRule))
-	apiMux.HandleFunc("DELETE /provisioning/{id}", auth.RequireFullAccess(r.handleDeleteProvisioningRule))
-	apiMux.HandleFunc("POST /provisioning/{id}/toggle", auth.RequireFullAccess(r.handleToggleProvisioningRule))
-	apiMux.HandleFunc("POST /provisioning/reorder", auth.RequireFullAccess(r.handleReorderProvisioningRules))
+	apiMux.HandleFunc("GET /provisioning", auth.RequirePermission(models.PermProvisioningRead)(r.handleListProvisioningRules))
+	apiMux.HandleFunc("POST /provisioning", auth.RequirePermission(models.PermProvisioningWrite)(r.handleCreateProvisioningRule))
+	apiMux.HandleFunc("PUT /provisioning/{id}", auth.RequirePermission(models.PermProvisioningWrite)(r.handleUpdateProvisioningRule))
+	apiMux.HandleFunc("DELETE /provisioning/{id}", auth.RequirePermission(models.PermProvisioningWrite)(r.handleDeleteProvisioningRule))
+	apiMux.HandleFunc("POST /provisioning/{id}/toggle", auth.RequirePermission(models.PermProvisioningWrite)(r.handleToggleProvisioningRule))
+	apiMux.HandleFunc("POST /provisioning/reorder", auth.RequirePermission(models.PermProvisioningWrite)(r.handleReorderProvisioningRules))
 
 	// Metric endpoints
-	apiMux.HandleFunc("GET /metrics/definitions", r.handleListMetricDefinitions)
-	apiMux.HandleFunc("POST /metrics/definitions", auth.RequireFullAccess(r.handleCreateMetricDefinition))
-	apiMux.HandleFunc("PUT /metrics/definitions/{id}", auth.RequireFullAccess(r.handleUpdateMetricDefinition))
-	apiMux.HandleFunc("DELETE /metrics/definitions/{id}", auth.RequireFullAccess(r.handleDeleteMetricDefinition))
-	apiMux.HandleFunc("GET /device/{serial}/metrics", r.handleGetDeviceMetrics)
+	apiMux.HandleFunc("GET /metrics/definitions", auth.RequirePermission(models.PermMetricsRead)(r.handleListMetricDefinitions))
+	apiMux.HandleFunc("POST /metrics/definitions", auth.RequirePermission(models.PermMetricsWrite)(r.handleCreateMetricDefinition))
+	apiMux.HandleFunc("PUT /metrics/definitions/{id}", auth.RequirePermission(models.PermMetricsWrite)(r.handleUpdateMetricDefinition))
+	apiMux.HandleFunc("DELETE /metrics/definitions/{id}", auth.RequirePermission(models.PermMetricsWrite)(r.handleDeleteMetricDefinition))
+	apiMux.HandleFunc("GET /device/{serial}/metrics", auth.RequirePermission(models.PermMetricsRead)(r.handleGetDeviceMetrics))
 
-	// Security center (full access only)
-	apiMux.HandleFunc("GET /security/overview", auth.RequireFullAccess(r.handleSecurityOverview))
-	apiMux.HandleFunc("GET /audit-logs", auth.RequireFullAccess(r.handleListAuditLogs))
-	apiMux.HandleFunc("GET /blocked-devices", auth.RequireFullAccess(r.handleListBlockedDevices))
-	apiMux.HandleFunc("POST /blocked-devices", auth.RequireFullAccess(r.handleAddBlockedDevice))
-	apiMux.HandleFunc("DELETE /blocked-devices/{serial}", auth.RequireFullAccess(r.handleRemoveBlockedDevice))
+	// Security center
+	apiMux.HandleFunc("GET /security/overview", auth.RequirePermission(models.PermSecurityRead)(r.handleSecurityOverview))
+	apiMux.HandleFunc("GET /audit-logs", auth.RequirePermission(models.PermSecurityRead)(r.handleListAuditLogs))
+	apiMux.HandleFunc("GET /blocked-devices", auth.RequirePermission(models.PermSecurityRead)(r.handleListBlockedDevices))
+	apiMux.HandleFunc("POST /blocked-devices", auth.RequirePermission(models.PermSecurityWrite)(r.handleAddBlockedDevice))
+	apiMux.HandleFunc("DELETE /blocked-devices/{serial}", auth.RequirePermission(models.PermSecurityWrite)(r.handleRemoveBlockedDevice))
 
 	// Authentication precedes the audit logger so actor details are available.
-	mux.Handle("/", auth.AuthMiddleware(r.userRepo, auditMiddleware(r.auditRepo, apiMux)))
+	mux.Handle("/", auth.AuthMiddleware(r.userRepo, r.roleRepo, auditMiddleware(r.auditRepo, apiMux)))
 
 	return securityHeaders(corsMiddleware(requestBodyLimit(mux)))
 }
@@ -1991,9 +1999,15 @@ func (r *Router) handleLogin(w http.ResponseWriter, req *http.Request) {
 	r.loginLimiter.Reset(ip)
 	r.recordLoginAudit(req, user.Username, http.StatusOK)
 
+	var perms []string
+	if user.RoleID != nil {
+		perms, _ = r.roleRepo.GetPermissions(req.Context(), *user.RoleID)
+	}
+
 	respondJSON(w, http.StatusOK, models.LoginResponse{
-		Token: token,
-		User:  user,
+		Token:       token,
+		User:        user,
+		Permissions: perms,
 	})
 }
 
@@ -2027,7 +2041,11 @@ func (r *Router) handleAuthMe(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, user)
+	perms := auth.GetPermissionsFromContext(req.Context())
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"user":        user,
+		"permissions": perms,
+	})
 }
 
 func (r *Router) handleChangePassword(w http.ResponseWriter, req *http.Request) {
@@ -2260,6 +2278,145 @@ func (r *Router) handleDeleteUser(w http.ResponseWriter, req *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (r *Router) handleListRoles(w http.ResponseWriter, req *http.Request) {
+	roles, err := r.roleRepo.List(req.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to list roles")
+		return
+	}
+	respondJSON(w, http.StatusOK, roles)
+}
+
+func (r *Router) handleCreateRole(w http.ResponseWriter, req *http.Request) {
+	var body models.CreateRoleRequest
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	body.Name = strings.TrimSpace(body.Name)
+	if body.Name == "" || len(body.Name) > 64 {
+		respondError(w, http.StatusBadRequest, "Role name is required (max 64 chars)")
+		return
+	}
+	for _, p := range body.Permissions {
+		if !isValidPermission(p) {
+			respondError(w, http.StatusBadRequest, "Invalid permission: "+p)
+			return
+		}
+	}
+
+	role := &models.Role{
+		Name:        body.Name,
+		Description: body.Description,
+		Permissions: body.Permissions,
+	}
+	if err := r.roleRepo.Create(req.Context(), role); err != nil {
+		if errors.Is(err, database.ErrDuplicateRole) {
+			respondError(w, http.StatusConflict, "Role name already exists")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "Failed to create role")
+		return
+	}
+	respondJSON(w, http.StatusCreated, role)
+}
+
+func (r *Router) handleUpdateRole(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid role ID")
+		return
+	}
+
+	role, err := r.roleRepo.GetByID(req.Context(), id)
+	if err != nil {
+		if errors.Is(err, database.ErrRoleNotFound) {
+			respondError(w, http.StatusNotFound, "Role not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "Failed to get role")
+		return
+	}
+	if role.IsSystem {
+		respondError(w, http.StatusBadRequest, "Cannot modify system role")
+		return
+	}
+
+	var body models.UpdateRoleRequest
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	if body.Name != nil {
+		role.Name = strings.TrimSpace(*body.Name)
+		if role.Name == "" || len(role.Name) > 64 {
+			respondError(w, http.StatusBadRequest, "Role name is required (max 64 chars)")
+			return
+		}
+	}
+	if body.Description != nil {
+		role.Description = *body.Description
+	}
+	if body.Permissions != nil {
+		for _, p := range body.Permissions {
+			if !isValidPermission(p) {
+				respondError(w, http.StatusBadRequest, "Invalid permission: "+p)
+				return
+			}
+		}
+		role.Permissions = body.Permissions
+	}
+
+	if err := r.roleRepo.Update(req.Context(), role); err != nil {
+		if errors.Is(err, database.ErrDuplicateRole) {
+			respondError(w, http.StatusConflict, "Role name already exists")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "Failed to update role")
+		return
+	}
+	respondJSON(w, http.StatusOK, role)
+}
+
+func (r *Router) handleDeleteRole(w http.ResponseWriter, req *http.Request) {
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid role ID")
+		return
+	}
+
+	if err := r.roleRepo.Delete(req.Context(), id); err != nil {
+		switch {
+		case errors.Is(err, database.ErrRoleNotFound):
+			respondError(w, http.StatusNotFound, "Role not found")
+		case errors.Is(err, database.ErrSystemRole):
+			respondError(w, http.StatusBadRequest, "Cannot delete system role")
+		case errors.Is(err, database.ErrRoleInUse):
+			respondError(w, http.StatusBadRequest, "Role is assigned to one or more users")
+		default:
+			respondError(w, http.StatusInternalServerError, "Failed to delete role")
+		}
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func isValidPermission(perm string) bool {
+	for _, p := range models.AllPermissions {
+		if p == perm {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Router) handleListProvisioningRules(w http.ResponseWriter, req *http.Request) {

@@ -14,6 +14,7 @@ type User struct {
 	Username     string     `json:"username" gorm:"uniqueIndex:idx_users_username;not null"`
 	PasswordHash string     `json:"-" gorm:"column:password_hash;not null"`
 	Role         UserRole   `json:"role" gorm:"type:text;default:'read'"`
+	RoleID       *int64     `json:"role_id" gorm:"index"`
 	TokenVersion uint64     `json:"-" gorm:"not null;default:0"`
 	CreatedAt    time.Time  `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt    time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
@@ -30,18 +31,21 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string `json:"token"`
-	User  *User  `json:"user"`
+	Token       string   `json:"token"`
+	User        *User    `json:"user"`
+	Permissions []string `json:"permissions"`
 }
 
 type CreateUserRequest struct {
 	Username string   `json:"username"`
 	Password string   `json:"password"`
 	Role     UserRole `json:"role"`
+	RoleID   *int64   `json:"role_id"`
 }
 
 type UpdateUserRequest struct {
 	Username string   `json:"username,omitempty"`
 	Password string   `json:"password,omitempty"`
 	Role     UserRole `json:"role,omitempty"`
+	RoleID   *int64   `json:"role_id"`
 }

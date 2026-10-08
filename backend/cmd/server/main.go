@@ -322,6 +322,7 @@ func runAutoMigrate(db *gorm.DB) error {
 		&models.DeviceParameter{},
 		&models.Task{},
 		&models.User{},
+		&models.Role{},
 		&models.Fault{},
 		&models.Firmware{},
 		&models.ProvisioningRule{},
@@ -404,7 +405,70 @@ func runAutoMigrate(db *gorm.DB) error {
 		}
 	}
 
+	// Seed built-in roles.
+	adminRole := &models.Role{Name: "admin", Description: "Full access to all features", Permissions: models.AllPermissions, IsSystem: true}
+	viewerRole := &models.Role{Name: "viewer", Description: "Read-only access to all features", Permissions: models.ReadPermissions, IsSystem: true}
+	for _, role := range []*models.Role{adminRole, viewerRole} {
+		var existing models.Role
+		if err := db.Where("name = ?", role.Name).First(&existing).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				if err := db.Create(role).Error; err != nil {
+					return fmt.Errorf("seed role %s: %w", role.Name, err)
+				}
+				log.Printf("Seeded built-in role: %s", role.Name)
+			} else {
+				return fmt.Errorf("check role %s: %w", role.Name, err)
+			}
+		}
+	}
+
+	// Migrate existing users to use RoleID.
+	if err := migrateUsersToRoles(db); err != nil {
+		return fmt.Errorf("migrate users to roles: %w", err)
+	}
+
 	log.Println("Database migrations completed")
+	return nil
+}
+
+func migrateUsersToRoles(db *gorm.DB) error {
+	var adminRole models.Role
+	if err := db.Where("name = ?", "admin").First(&adminRole).Error; err != nil {
+		return fmt.Errorf("find admin role: %w", err)
+	}
+	var viewerRole models.Role
+	if err := db.Where("name = ?", "viewer").First(&viewerRole).Error; err != nil {
+		return fmt.Errorf("find viewer role: %w", err)
+	}
+
+	// Assign RoleID to users with legacy "full" role.
+	var fullUsers []models.User
+	if err := db.Where("role = ? AND role_id IS NULL", models.RoleFull).Find(&fullUsers).Error; err != nil {
+		return fmt.Errorf("find full users: %w", err)
+	}
+	for i := range fullUsers {
+		if err := db.Model(&fullUsers[i]).Update("role_id", adminRole.ID).Error; err != nil {
+			return fmt.Errorf("assign admin role to user %d: %w", fullUsers[i].ID, err)
+		}
+	}
+	if len(fullUsers) > 0 {
+		log.Printf("Migrated %d users to admin role", len(fullUsers))
+	}
+
+	// Assign RoleID to users with legacy "read" role.
+	var readUsers []models.User
+	if err := db.Where("role = ? AND role_id IS NULL", models.RoleRead).Find(&readUsers).Error; err != nil {
+		return fmt.Errorf("find read users: %w", err)
+	}
+	for i := range readUsers {
+		if err := db.Model(&readUsers[i]).Update("role_id", viewerRole.ID).Error; err != nil {
+			return fmt.Errorf("assign viewer role to user %d: %w", readUsers[i].ID, err)
+		}
+	}
+	if len(readUsers) > 0 {
+		log.Printf("Migrated %d users to viewer role", len(readUsers))
+	}
+
 	return nil
 }
 

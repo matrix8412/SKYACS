@@ -13,14 +13,16 @@ import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
 import { useColumnVisibility } from '../lib/useColumnVisibility';
+import RolesTab from './RolesTab';
 
 const UsersPage: Component = () => {
-  const { isFullAccess } = useAuth();
+  const { isFullAccess, hasPermission } = useAuth();
   const { confirm, notify } = useFeedback();
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
+  const [activeTab, setActiveTab] = createSignal<'users' | 'roles'>('users');
 
   const [users, { refetch: refetchUsers }] = createResource(async () => {
-    if (!isFullAccess()) return [];
+    if (!hasPermission('users.read')) return [];
     return api.getUsers();
   });
 
@@ -120,6 +122,12 @@ const UsersPage: Component = () => {
     <div class="space-y-5">
       <PageHeader title="Users and Roles" description="Manage operator accounts and their access levels." />
 
+      <div class="flex gap-1 border-b border-border">
+        <button type="button" class={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab() === 'users' ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground'}`} onClick={() => setActiveTab('users')}>Users</button>
+        <button type="button" class={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab() === 'roles' ? 'border-primary text-primary' : 'border-transparent text-muted hover:text-foreground'}`} onClick={() => setActiveTab('roles')}>Roles</button>
+      </div>
+
+      <Show when={activeTab() === 'users'}>
       <div class="card p-5">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
@@ -211,6 +219,11 @@ const UsersPage: Component = () => {
         </Show>
         <Show when={!users.loading && !users.error && (users()?.length ?? 0) === 0}><EmptyState compact title="No additional operators exist" description="Create a named operator account instead of sharing administrative credentials." action={<button type="button" class="btn btn-primary" onClick={openCreateUser}>Add operator</button>} /></Show>
       </div>
+      </Show>
+
+      <Show when={activeTab() === 'roles'}>
+        <RolesTab />
+      </Show>
 
       {/* User Modal */}
       <Show when={showUserModal()}>
