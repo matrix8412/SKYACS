@@ -55,7 +55,7 @@ type Role struct {
 	ID          int64    `gorm:"primaryKey" json:"id"`
 	Name        string   `gorm:"uniqueIndex;size:64;not null" json:"name"`
 	Description string   `gorm:"size:256" json:"description"`
-	Permissions  []string `gorm:"type:jsonb;default:'[]'" json:"permissions"`
+	Permissions  []string `gorm:"type:jsonb;serializer:json;default:'[]'" json:"permissions"`
 	IsSystem    bool     `gorm:"default:false" json:"is_system"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
