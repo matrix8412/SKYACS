@@ -393,37 +393,21 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       <Show when={!data.loading && !data.error && seriesData()}>
         <div ref={setChartEl} class="w-full h-[200px] relative overflow-hidden" />
         <Show when={legendStats()}>
-          <Show when={props.metrics.length > 1} fallback={
-            <div class="flex flex-wrap gap-x-4 gap-y-1 pt-1">
-              <For each={legendStats()!}>
-                {(s) => (
+          <div class="flex flex-col gap-0.5 pt-1">
+            <For each={legendStats()!}>
+              {(s) => (
+                <div class="flex items-center justify-between">
                   <div class="flex items-center gap-1.5">
                     <span class="w-2.5 h-2.5 rounded-[2px] inline-block" style={{ background: s.color }} />
                     <span class="text-xs text-secondary">{s.name}</span>
-                    <span class="text-[10px] text-muted font-mono">
-                      min {fmtVal(s.min)} · avg {fmtVal(s.avg)} · max {fmtVal(s.max)}{s.unit ? ` ${s.unit}` : ''}
-                    </span>
                   </div>
-                )}
-              </For>
-            </div>
-          }>
-            <div class="flex flex-col gap-0.5 pt-1">
-              <For each={legendStats()!}>
-                {(s) => (
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-1.5">
-                      <span class="w-2.5 h-2.5 rounded-[2px] inline-block" style={{ background: s.color }} />
-                      <span class="text-xs text-secondary">{s.name}</span>
-                    </div>
-                    <span class="text-[10px] text-muted font-mono">
-                      min {fmtVal(s.min)} · avg {fmtVal(s.avg)} · max {fmtVal(s.max)}{s.unit ? ` ${s.unit}` : ''}
-                    </span>
-                  </div>
-                )}
-              </For>
-            </div>
-          </Show>
+                  <span class="text-[10px] text-muted font-mono">
+                    min {fmtVal(s.min)} · avg {fmtVal(s.avg)} · max {fmtVal(s.max)}{s.unit ? ` ${s.unit}` : ''}
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
         </Show>
       </Show>
       <Show when={!data.loading && !data.error && !seriesData()}>
