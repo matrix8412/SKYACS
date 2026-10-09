@@ -820,6 +820,8 @@ const DeviceDetail: Component = () => {
           max: range?.max,
           animated: def.gauge_animated,
           thresholds: def.thresholds,
+          arc: def.gauge_arc,
+          pointer: def.gauge_pointer,
         };
       });
     }
@@ -1280,6 +1282,8 @@ const DeviceDetail: Component = () => {
                             centerText={tile.value}
                             animated={tile.animated ?? true}
                             thresholds={tile.thresholds}
+                            arc={tile.arc}
+                            pointer={tile.pointer}
                           />
                         </Show>
                         <Show when={tile.format !== 'gauge'}>

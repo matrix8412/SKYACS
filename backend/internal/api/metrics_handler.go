@@ -305,5 +305,10 @@ func validateMetricDefinition(def *models.MetricDefinition) error {
 	default:
 		return errors.New("chart_type is not a valid ECharts type")
 	}
+	switch def.GaugeArc {
+	case "", "180", "270", "360":
+	default:
+		return errors.New("gauge_arc must be '180', '270', or '360'")
+	}
 	return nil
 }

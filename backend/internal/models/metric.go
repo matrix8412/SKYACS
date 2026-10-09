@@ -38,6 +38,10 @@ type MetricDefinition struct {
 	ThresholdDirection string    `json:"threshold_direction" gorm:"not null;default:'higher_is_worse'"`
 	DisplayFormat      string      `json:"display_format" gorm:"not null;default:'number'"`
 	GaugeAnimated      bool        `json:"gauge_animated" gorm:"default:true"`
+	GaugeMin           *float64    `json:"gauge_min"`
+	GaugeMax           *float64    `json:"gauge_max"`
+	GaugeArc           string      `json:"gauge_arc" gorm:"not null;default:'270'"`
+	GaugePointer       bool        `json:"gauge_pointer" gorm:"default:true"`
 	Thresholds         []Threshold `json:"thresholds" gorm:"type:jsonb;serializer:json"`
 	ChartType          string      `json:"chart_type" gorm:"not null;default:'line'"`
 	CreatedAt          time.Time   `json:"created_at" gorm:"autoCreateTime"`

@@ -32,6 +32,10 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   threshold_direction: 'higher_is_worse',
   display_format: 'number',
   gauge_animated: true,
+  gauge_min: null,
+  gauge_max: null,
+  gauge_arc: '270',
+  gauge_pointer: true,
   thresholds: [],
   chart_type: 'line',
 };
@@ -109,6 +113,10 @@ const Settings: Component = () => {
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
       gauge_animated: def.gauge_animated,
+      gauge_min: def.gauge_min ?? null,
+      gauge_max: def.gauge_max ?? null,
+      gauge_arc: def.gauge_arc || '270',
+      gauge_pointer: def.gauge_pointer ?? true,
       thresholds: def.thresholds || [],
       chart_type: def.chart_type || 'line',
     });

@@ -45,6 +45,10 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   threshold_direction: 'higher_is_worse',
   display_format: 'number',
   gauge_animated: true,
+  gauge_min: null,
+  gauge_max: null,
+  gauge_arc: '270',
+  gauge_pointer: true,
   thresholds: [],
   chart_type: 'line',
 };
@@ -164,6 +168,10 @@ const MetricsSettings: Component = () => {
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
       gauge_animated: def.gauge_animated,
+      gauge_min: def.gauge_min ?? null,
+      gauge_max: def.gauge_max ?? null,
+      gauge_arc: def.gauge_arc || '270',
+      gauge_pointer: def.gauge_pointer ?? true,
       thresholds: def.thresholds || [],
       chart_type: def.chart_type || 'line',
     });
@@ -193,6 +201,10 @@ const MetricsSettings: Component = () => {
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
       gauge_animated: def.gauge_animated,
+      gauge_min: def.gauge_min ?? null,
+      gauge_max: def.gauge_max ?? null,
+      gauge_arc: def.gauge_arc || '270',
+      gauge_pointer: def.gauge_pointer ?? true,
       thresholds: def.thresholds || [],
       chart_type: def.chart_type || 'line',
     });
@@ -545,20 +557,31 @@ const MetricsSettings: Component = () => {
                     <option value="false">No — static</option>
                   </select>
                 </div>
-                <div>
-                  <label for="metric-chart-type-health" class="block text-xs text-muted mb-1.5">Chart Type</label>
-                  <select id="metric-chart-type-health" value={metricForm().chart_type} onChange={(e) => setMetricForm(f => ({ ...f, chart_type: e.currentTarget.value }))} class="input w-full">
-                    <For each={CHART_TYPE_GROUPS}>
-                      {(g) => (
-                        <optgroup label={g.category}>
-                          <For each={g.types}>
-                            {(t) => <option value={t.value}>{t.label}</option>}
-                          </For>
-                        </optgroup>
-                      )}
-                    </For>
-                  </select>
-                </div>
+                <Show when={metricForm().display_format === 'gauge'}>
+                  <div>
+                    <label for="metric-gauge-min" class="block text-xs text-muted mb-1.5">Gauge min</label>
+                    <input id="metric-gauge-min" type="number" step="any" value={metricForm().gauge_min ?? ''} onInput={(e) => setMetricForm(f => ({ ...f, gauge_min: e.currentTarget.value === '' ? null : parseFloat(e.currentTarget.value) }))} placeholder="auto" class="input w-full" />
+                  </div>
+                  <div>
+                    <label for="metric-gauge-max" class="block text-xs text-muted mb-1.5">Gauge max</label>
+                    <input id="metric-gauge-max" type="number" step="any" value={metricForm().gauge_max ?? ''} onInput={(e) => setMetricForm(f => ({ ...f, gauge_max: e.currentTarget.value === '' ? null : parseFloat(e.currentTarget.value) }))} placeholder="auto" class="input w-full" />
+                  </div>
+                  <div>
+                    <label for="metric-gauge-arc" class="block text-xs text-muted mb-1.5">Gauge arc</label>
+                    <select id="metric-gauge-arc" value={metricForm().gauge_arc} onChange={(e) => setMetricForm(f => ({ ...f, gauge_arc: e.currentTarget.value as '180' | '270' | '360' }))} class="input w-full">
+                      <option value="180">180° (half circle)</option>
+                      <option value="270">270° (3/4 circle)</option>
+                      <option value="360">360° (full circle)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="metric-gauge-pointer" class="block text-xs text-muted mb-1.5">Show pointer</label>
+                    <select id="metric-gauge-pointer" value={metricForm().gauge_pointer ? 'true' : 'false'} onChange={(e) => setMetricForm(f => ({ ...f, gauge_pointer: e.currentTarget.value === 'true' }))} class="input w-full">
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </div>
+                </Show>
                 <div class="col-span-2">
                   <label class="block text-xs text-muted mb-1.5">Custom threshold bands</label>
                   <div class="space-y-1.5">

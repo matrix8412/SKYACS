@@ -20,6 +20,8 @@ interface HealthGaugeProps {
   warn?: number | null;
   critical?: number | null;
   direction?: 'higher_is_worse' | 'lower_is_worse';
+  arc?: string;
+  pointer?: boolean;
 }
 
 const HealthGauge: Component<HealthGaugeProps> = (props) => {
@@ -27,7 +29,7 @@ const HealthGauge: Component<HealthGaugeProps> = (props) => {
   let chart: echarts.ECharts | null = null;
 
   const buildOption = () => {
-    const { value, min, max, centerText, animated, warn, critical, direction, thresholds } = props;
+    const { value, min, max, centerText, animated, warn, critical, direction, thresholds, arc, pointer } = props;
     const safeVal = value ?? min;
     const range = max - min || 1;
 
@@ -55,6 +57,12 @@ const HealthGauge: Component<HealthGaugeProps> = (props) => {
       zones.push([1, '#f43f5e']);
     }
 
+    // Arc angles based on gauge_arc setting
+    let startAngle = 200;
+    let endAngle = -20;
+    if (arc === '180') { startAngle = 180; endAngle = 0; }
+    else if (arc === '360') { startAngle = 90; endAngle = -270; }
+
     return {
       animation: animated,
       animationDuration: 600,
@@ -64,8 +72,8 @@ const HealthGauge: Component<HealthGaugeProps> = (props) => {
           type: 'gauge' as const,
           min,
           max,
-          startAngle: 200,
-          endAngle: -20,
+          startAngle,
+          endAngle,
           radius: '90%',
           axisLine: {
             lineStyle: {
@@ -74,6 +82,7 @@ const HealthGauge: Component<HealthGaugeProps> = (props) => {
             },
           },
           pointer: {
+            show: pointer !== false,
             length: '60%',
             width: 4,
             itemStyle: { color: 'auto' },

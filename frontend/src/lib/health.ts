@@ -10,6 +10,8 @@ export interface HealthTile {
   max?: number;
   animated?: boolean;
   thresholds?: Threshold[];
+  arc?: string;
+  pointer?: boolean;
 }
 
 export function formatUptime(seconds: number | string): string {
@@ -73,6 +75,9 @@ export function healthColor(v: number | null, def: MetricDefinition): string {
 }
 
 export function gaugeRange(v: number | null, def: MetricDefinition): { min: number; max: number } {
+  if (def.gauge_min != null && def.gauge_max != null) {
+    return { min: def.gauge_min, max: def.gauge_max > def.gauge_min ? def.gauge_max : def.gauge_min + 100 };
+  }
   if (def.thresholds && def.thresholds.length > 0) {
     const values = def.thresholds.map(t => t.value);
     const min = Math.min(...values);

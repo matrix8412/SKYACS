@@ -166,6 +166,34 @@ test('gaugeRange lower_is_worse: falls back to value-based range when no thresho
   assert.equal(r.max, 200);
 });
 
+test('gaugeRange uses manual gauge_min and gauge_max when set', () => {
+  const def = { ...baseDef, gauge_min: -50, gauge_max: 0, warn_threshold: null, critical_threshold: null };
+  const r = gaugeRange(-30, def);
+  assert.equal(r.min, -50);
+  assert.equal(r.max, 0);
+});
+
+test('gaugeRange manual min/max takes precedence over thresholds', () => {
+  const def = { ...baseDef, gauge_min: 0, gauge_max: 200, warn_threshold: 80, critical_threshold: 100 };
+  const r = gaugeRange(50, def);
+  assert.equal(r.min, 0);
+  assert.equal(r.max, 200);
+});
+
+test('gaugeRange manual min/max: handles max <= min by adding 100', () => {
+  const def = { ...baseDef, gauge_min: 100, gauge_max: 100 };
+  const r = gaugeRange(50, def);
+  assert.equal(r.min, 100);
+  assert.equal(r.max, 200);
+});
+
+test('gaugeRange ignores manual min when max is not set', () => {
+  const def = { ...baseDef, gauge_min: 0, gauge_max: null, warn_threshold: 80, critical_threshold: 100 };
+  const r = gaugeRange(50, def);
+  assert.equal(r.min, 0);
+  assert.equal(r.max, 100);
+});
+
 // thresholdBandColor
 test('thresholdBandColor returns null when no thresholds', () => {
   assert.equal(thresholdBandColor(50, []), null);
