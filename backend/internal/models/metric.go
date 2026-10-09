@@ -4,6 +4,13 @@ import (
 	"time"
 )
 
+// Threshold is a single threshold level with an associated color.
+// Thresholds are sorted by value; each threshold marks the start of a band.
+type Threshold struct {
+	Value float64 `json:"value"`
+	Color string  `json:"color"`
+}
+
 // MetricDefinition describes a single metric that can be collected from devices.
 // DeviceTypeMatch is a glob pattern matched against "Manufacturer/ProductClass".
 // Source controls how the metric is collected:
@@ -29,10 +36,12 @@ type MetricDefinition struct {
 	WarnThreshold      *float64  `json:"warn_threshold"`
 	CriticalThreshold  *float64  `json:"critical_threshold"`
 	ThresholdDirection string    `json:"threshold_direction" gorm:"not null;default:'higher_is_worse'"`
-	DisplayFormat      string    `json:"display_format" gorm:"not null;default:'number'"`
-	GaugeAnimated      bool      `json:"gauge_animated" gorm:"default:true"`
-	CreatedAt          time.Time `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt          time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+	DisplayFormat      string      `json:"display_format" gorm:"not null;default:'number'"`
+	GaugeAnimated      bool        `json:"gauge_animated" gorm:"default:true"`
+	Thresholds         []Threshold `json:"thresholds" gorm:"type:jsonb;serializer:json"`
+	ChartType          string      `json:"chart_type" gorm:"not null;default:'line'"`
+	CreatedAt          time.Time   `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt          time.Time   `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 func (MetricDefinition) TableName() string {

@@ -1,8 +1,18 @@
-import type { Component } from 'solid-js';
+﻿import type { Component } from 'solid-js';
 import { createSignal, createResource, createEffect, createMemo, onCleanup, Show, For } from 'solid-js';
-import uPlot from 'uplot';
-import 'uplot/dist/uPlot.min.css';
+import * as echarts from 'echarts/core';
+import { LineChart, BarChart, ScatterChart, EffectScatterChart, CandlestickChart, BoxplotChart, HeatmapChart } from 'echarts/charts';
+import { GridComponent, TooltipComponent, MarkLineComponent } from 'echarts/components';
+import { CanvasRenderer } from 'echarts/renderers';
 import { api, type MetricDefinition } from '../lib/api';
+import { thresholdLines } from '../lib/health';
+import { isTimeSeriesType } from '../lib/echartsTypes';
+
+echarts.use([
+  LineChart, BarChart, ScatterChart, EffectScatterChart, CandlestickChart, BoxplotChart, HeatmapChart,
+  GridComponent, TooltipComponent, MarkLineComponent,
+  CanvasRenderer,
+]);
 
 interface MetricChartProps {
   serial: string;
@@ -82,13 +92,16 @@ const effectiveUnit = (unit: string, scaleMode: string, suffix: string): string 
 
 const fmtVal = (v: number | null): string => (v == null ? '—' : v.toFixed(2));
 
+const MONO_FONT = '"IBM Plex Mono", monospace';
+const AXIS_COLOR = '#475569';
+const LABEL_COLOR = '#71717a';
+const GRID_COLOR = 'rgba(71,85,105,0.15)';
+
 const MetricChart: Component<MetricChartProps> = (props) => {
   const [bucket, setBucket] = createSignal(getStoredBucket(props.serial));
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
-  let chart: uPlot | null = null;
+  let chart: echarts.ECharts | null = null;
   let resizeObserver: ResizeObserver | null = null;
-  let rafId: number | null = null;
-  let tooltipEl: HTMLDivElement | null = null;
 
   const [settings] = createResource(() => api.getSettings());
   const chartShowPoints = createMemo(() => settings()?.['chart_show_points'] !== 'false');
@@ -105,27 +118,30 @@ const MetricChart: Component<MetricChartProps> = (props) => {
 
   const hasRightAxis = createMemo(() => props.metrics.some((m) => m.axis === 'right'));
 
+  const chartType = createMemo(() => {
+    const t = props.metrics[0]?.chart_type || 'line';
+    return isTimeSeriesType(t) ? t : 'line';
+  });
+
   const seriesData = createMemo(() => {
     const results = data();
     if (!results) return null;
 
     let baseTimes: number[] | null = null;
-    let isAggregated = false;
 
     for (const r of results) {
       if (r.aggregates && r.aggregates.length > 0) {
-        baseTimes = r.aggregates.map((a) => new Date(a.timestamp).getTime() / 1000);
-        isAggregated = true;
+        baseTimes = r.aggregates.map((a) => new Date(a.timestamp).getTime());
         break;
       }
       if (r.samples && r.samples.length > 0) {
-        baseTimes = r.samples.map((s) => new Date(s.timestamp).getTime() / 1000);
+        baseTimes = r.samples.map((s) => new Date(s.timestamp).getTime());
         break;
       }
     }
     if (!baseTimes) return null;
 
-    const series: number[][] = [baseTimes];
+    const series: (number | null)[][] = [];
     const suffixes: string[] = [];
 
     for (let i = 0; i < results.length; i++) {
@@ -142,11 +158,11 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       } else if (r.samples && r.samples.length > 0) {
         series.push(r.samples.map((s) => s.value / scale.divisor));
       } else {
-        series.push(baseTimes.map(() => null as unknown as number));
+        series.push(baseTimes.map(() => null));
       }
     }
 
-    return { series, isAggregated, suffixes };
+    return { baseTimes, series, suffixes };
   });
 
   const chartTitle = createMemo(() => {
@@ -184,16 +200,14 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       return { name: m.name, color, unit, min, avg, max };
     });
   });
-
-  const renderChart = (showPoints: boolean) => {
-    if (!chartEl()) return;
+  const buildOption = (): echarts.EChartsCoreOption => {
     const s = seriesData();
-    if (!s) {
-      if (chart) { chart.destroy(); chart = null; }
-      return;
-    }
+    if (!s) return {};
 
     const metrics = props.metrics;
+    const showPoints = chartShowPoints();
+    const type = chartType();
+
     const axisUnitLabel = (side: 'left' | 'right'): string => {
       const units: string[] = [];
       for (let i = 0; i < metrics.length; i++) {
@@ -204,160 +218,150 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       }
       return units.join(' / ');
     };
-    const specs: uPlot.Series[] = [{ label: 'Time' }];
 
+    const yAxis: any[] = [{
+      type: 'value',
+      name: axisUnitLabel('left'),
+      nameTextStyle: { color: LABEL_COLOR, fontSize: 10, align: 'left' },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: LABEL_COLOR, fontSize: 10, fontFamily: MONO_FONT },
+      splitLine: { lineStyle: { color: GRID_COLOR } },
+    }];
+    if (hasRightAxis()) {
+      yAxis.push({
+        type: 'value',
+        name: axisUnitLabel('right'),
+        nameTextStyle: { color: LABEL_COLOR, fontSize: 10, align: 'right' },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: LABEL_COLOR, fontSize: 10, fontFamily: MONO_FONT },
+        splitLine: { show: false },
+      });
+    }
+
+    const series: any[] = [];
     for (let i = 0; i < metrics.length; i++) {
       const m = metrics[i];
       const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
-      const scale = m.axis === 'right' ? 'y2' : 'y';
       const unit = effectiveUnit(m.unit, m.unit_scale, s.suffixes[i]);
       const label = m.name + (unit ? ` (${unit})` : '');
+      const yAxisIndex = m.axis === 'right' ? 1 : 0;
 
-      specs.push({
-        label,
-        stroke: color,
-        width: 2,
-        fill: hexToRgba(color, 0.06),
-        points: { show: showPoints, size: 4 },
-        scale,
-      });
+      const dataPoints: [number, number | null][] = s.baseTimes.map((t, j) => [t, s.series[i][j]]);
+
+      const tLines = thresholdLines(m);
+      const markLine = tLines.length > 0 ? {
+        silent: true,
+        symbol: 'none',
+        lineStyle: { type: 'dashed' as const, width: 1 },
+        label: { show: false },
+        data: tLines.map((tl) => ({
+          yAxis: tl.value,
+          lineStyle: { color: tl.color, type: 'dashed' as const },
+        })),
+      } : undefined;
+
+      const base: any = {
+        name: label,
+        type: type as any,
+        yAxisIndex,
+        data: dataPoints,
+        markLine,
+        lineStyle: { color, width: 2 },
+        itemStyle: { color },
+      };
+
+      if (type === 'line') {
+        base.smooth = false;
+        base.symbol = showPoints ? 'circle' : 'none';
+        base.symbolSize = 4;
+        base.areaStyle = { color: hexToRgba(color, 0.06) };
+      } else if (type === 'bar') {
+        base.barMaxWidth = 8;
+      } else if (type === 'scatter' || type === 'effectScatter') {
+        base.symbolSize = showPoints ? 6 : 4;
+      }
+
+      series.push(base);
     }
 
-    const scales: uPlot.Scales = {
-      x: { time: true },
-      y: { auto: true },
-    };
-    if (hasRightAxis()) {
-      scales.y2 = { auto: true };
-    }
-
-    const axes: uPlot.Axes = [
-      {
-        stroke: '#475569',
-        grid: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
-        ticks: { stroke: 'rgba(71,85,105,0.2)', width: 1 },
-        label: '',
-        font: '11px "IBM Plex Mono", monospace',
-        space: 40,
+    return {
+      animation: false,
+      grid: {
+        left: 40,
+        right: hasRightAxis() ? 40 : 10,
+        top: 20,
+        bottom: 20,
+        containLabel: false,
       },
-      {
-        stroke: '#475569',
-        grid: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-        ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-        label: axisUnitLabel('left'),
-        font: '11px "IBM Plex Mono", monospace',
-        space: 40,
-      },
-    ];
-    if (hasRightAxis()) {
-      axes.push({
-        scale: 'y2',
-        stroke: '#475569',
-        grid: { show: false },
-        ticks: { stroke: 'rgba(71,85,105,0.15)', width: 1 },
-        label: axisUnitLabel('right'),
-        font: '11px "IBM Plex Mono", monospace',
-        space: 40,
-        side: 1,
-      });
-    }
-
-    const opts: uPlot.Options = {
-      width: chartEl()!.clientWidth || 600,
-      height: 200,
-      series: specs,
-      cursor: { drag: { x: true, y: false } },
-      scales,
-      axes,
-      legend: { show: metrics.length > 1 },
-      padding: [0, 0, 0, 0],
-      hooks: {
-        setCursor: [(self: uPlot) => {
-          const idx = self.cursor.idx;
-          if (idx == null || !tooltipEl) {
-            if (tooltipEl) tooltipEl.style.display = 'none';
-            return;
-          }
-          const ts = self.data[0][idx];
-          if (ts == null) { tooltipEl.style.display = 'none'; return; }
-          const date = new Date(ts * 1000);
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(15,23,42,0.9)',
+        borderColor: 'transparent',
+        padding: [4, 8],
+        textStyle: { color: '#e2e8f0', fontSize: 11, fontFamily: MONO_FONT },
+        axisPointer: { type: 'line', lineStyle: { color: AXIS_COLOR } },
+        formatter: (params: any) => {
+          if (!Array.isArray(params) || params.length === 0) return '';
+          const ts = params[0].value[0];
+          const date = new Date(ts);
           const timeStr = date.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit' });
           const dateStr = date.toLocaleDateString('sk-SK', { day: 'numeric', month: 'numeric' });
-
           let html = `<div style="margin-bottom:3px;opacity:0.7">${dateStr} ${timeStr}</div>`;
           let hasVal = false;
-          for (let i = 0; i < metrics.length; i++) {
-            const m = metrics[i];
-            const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
-            const valIdx = 1 + i;
-            const val = self.data[valIdx]?.[idx];
-            if (val == null) continue;
+          for (const p of params) {
+            if (p.value == null || p.value[1] == null) continue;
             hasVal = true;
-            const effUnit = effectiveUnit(m.unit, m.unit_scale, s.suffixes[i]);
+            const idx = p.seriesIndex;
+            const m = metrics[idx];
+            const effUnit = effectiveUnit(m.unit, m.unit_scale, s.suffixes[idx]);
             const unit = effUnit ? ` ${effUnit}` : '';
-            html += `<div style="display:flex;align-items:center;gap:4px;margin-top:2px;"><span style="width:8px;height:8px;border-radius:2px;background:${color};display:inline-block;"></span><span>${m.name}: ${typeof val === 'number' ? val.toFixed(2) : val}${unit}</span></div>`;
+            html += `<div style="display:flex;align-items:center;gap:4px;margin-top:2px"><span style="width:8px;height:8px;border-radius:2px;background:${p.color};display:inline-block"></span><span>${p.seriesName}: ${typeof p.value[1] === 'number' ? p.value[1].toFixed(2) : p.value[1]}${unit}</span></div>`;
           }
-          if (!hasVal) { tooltipEl.style.display = 'none'; return; }
-
-          tooltipEl.innerHTML = html;
-          tooltipEl.style.display = 'block';
-
-          const xPos = self.valToPos(ts, 'x', true);
-          const yPos = self.valToPos(self.data[1]?.[idx] ?? 0, 'y', true);
-          const left = Math.max(0, Math.min(xPos, self.width - 160));
-          const top = Math.max(0, yPos - 30);
-          tooltipEl.style.left = `${left}px`;
-          tooltipEl.style.top = `${top}px`;
-        }],
+          return hasVal ? html : '';
+        },
       },
+      xAxis: {
+        type: 'time',
+        axisLine: { lineStyle: { color: AXIS_COLOR } },
+        axisTick: { show: false },
+        axisLabel: { color: LABEL_COLOR, fontSize: 10, fontFamily: MONO_FONT },
+        splitLine: { show: false },
+      },
+      yAxis,
+      series,
     };
-
-    if (chart) {
-      chart.destroy();
-      chart = null;
-    }
-    if (resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver = null;
-    }
-    if (tooltipEl) {
-      tooltipEl.remove();
-      tooltipEl = null;
+  };
+  const renderChart = () => {
+    const el = chartEl();
+    if (!el) return;
+    const s = seriesData();
+    if (!s) {
+      if (chart) { chart.dispose(); chart = null; }
+      return;
     }
 
-    tooltipEl = document.createElement('div');
-    tooltipEl.style.cssText = 'position:absolute;display:none;pointer-events:none;background:rgba(15,23,42,0.9);color:#e2e8f0;font:11px "IBM Plex Mono",monospace;padding:4px 8px;border-radius:4px;white-space:nowrap;z-index:10;';
-    chartEl()!.appendChild(tooltipEl);
-
-    chart = new uPlot(opts, s.series as any, chartEl()!);
-
-    resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (chart) {
-          chart.setSize({ width: entry.contentRect.width, height: 200 });
-        }
-      }
-    });
-    resizeObserver.observe(chartEl()!);
+    if (!chart) {
+      chart = echarts.init(el, null, { renderer: 'canvas' });
+      resizeObserver = new ResizeObserver(() => {
+        if (chart) chart.resize();
+      });
+      resizeObserver.observe(el);
+    }
+    chart.setOption(buildOption() as any, { notMerge: true });
   };
 
   createEffect(() => {
     const el = chartEl();
     const s = seriesData();
-    const showPoints = chartShowPoints();
     if (!el || !s) return;
-    if (rafId) cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(() => {
-      rafId = null;
-      renderChart(showPoints);
-    });
+    renderChart();
   });
 
   onCleanup(() => {
-    if (rafId) cancelAnimationFrame(rafId);
     if (resizeObserver) resizeObserver.disconnect();
-    if (chart) chart.destroy();
-    if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
+    if (chart) { chart.dispose(); chart = null; }
   });
 
   const handleBucketChange = (opt: typeof BUCKET_OPTIONS[number]) => {

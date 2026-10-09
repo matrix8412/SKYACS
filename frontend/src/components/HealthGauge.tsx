@@ -3,6 +3,8 @@ import { onMount, onCleanup, createEffect, Show } from 'solid-js';
 import * as echarts from 'echarts/core';
 import { GaugeChart } from 'echarts/charts';
 import { CanvasRenderer } from 'echarts/renderers';
+import { gaugeZones } from '../lib/health';
+import type { Threshold } from '../lib/api';
 
 echarts.use([GaugeChart, CanvasRenderer]);
 
@@ -14,6 +16,7 @@ interface HealthGaugeProps {
   label: string;
   centerText: string;
   animated: boolean;
+  thresholds?: Threshold[];
   warn?: number | null;
   critical?: number | null;
   direction?: 'higher_is_worse' | 'lower_is_worse';
@@ -24,13 +27,16 @@ const HealthGauge: Component<HealthGaugeProps> = (props) => {
   let chart: echarts.ECharts | null = null;
 
   const buildOption = () => {
-    const { value, min, max, centerText, animated, warn, critical, direction } = props;
+    const { value, min, max, centerText, animated, warn, critical, direction, thresholds } = props;
     const safeVal = value ?? min;
     const range = max - min || 1;
 
-    // Build color zones
-    const zones: [number, string][] = [];
-    if (direction === 'lower_is_worse') {
+    // Build color zones. Custom thresholds take precedence over legacy warn/critical.
+    let zones: [number, string][];
+    if (thresholds && thresholds.length > 0) {
+      zones = gaugeZones(thresholds, min, max);
+    } else if (direction === 'lower_is_worse') {
+      zones = [];
       if (critical != null && critical > min) {
         zones.push([Number(((critical - min) / range).toFixed(4)), '#f43f5e']);
       }
@@ -39,6 +45,7 @@ const HealthGauge: Component<HealthGaugeProps> = (props) => {
       }
       zones.push([1, '#10b981']);
     } else {
+      zones = [];
       if (warn != null && warn < max) {
         zones.push([Number(((warn - min) / range).toFixed(4)), '#10b981']);
       }

@@ -819,6 +819,7 @@ const DeviceDetail: Component = () => {
           min: range?.min,
           max: range?.max,
           animated: def.gauge_animated,
+          thresholds: def.thresholds,
         };
       });
     }
@@ -1278,10 +1279,14 @@ const DeviceDetail: Component = () => {
                             label={tile.label}
                             centerText={tile.value}
                             animated={tile.animated ?? true}
+                            thresholds={tile.thresholds}
                           />
                         </Show>
                         <Show when={tile.format !== 'gauge'}>
-                          <div class={`text-lg font-bold font-mono ${tile.color}`}>
+                          <div
+                            class={`text-lg font-bold font-mono ${tile.color.startsWith('#') ? '' : tile.color}`}
+                            style={tile.color.startsWith('#') ? { color: tile.color } : {}}
+                          >
                             {tile.value}
                           </div>
                           <div class="text-[10px] text-muted mt-0.5">{tile.label}</div>

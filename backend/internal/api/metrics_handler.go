@@ -292,5 +292,18 @@ func validateMetricDefinition(def *models.MetricDefinition) error {
 	default:
 		return errors.New("display_format must be 'number', 'uptime', or 'gauge'")
 	}
+	if len(def.Thresholds) > 20 {
+		return errors.New("thresholds must have at most 20 entries")
+	}
+	for _, t := range def.Thresholds {
+		if t.Color != "" && !colorHexRe.MatchString(t.Color) {
+			return errors.New("thresholds color must be a valid hex color (e.g. #38bdf8)")
+		}
+	}
+	switch def.ChartType {
+	case "", "line", "bar", "pictorialBar", "scatter", "effectScatter", "candlestick", "boxplot", "heatmap", "pie", "sunburst", "gauge", "radar", "funnel", "graph", "chord", "sankey", "treemap", "tree", "map", "lines", "parallel", "themeRiver", "custom":
+	default:
+		return errors.New("chart_type is not a valid ECharts type")
+	}
 	return nil
 }

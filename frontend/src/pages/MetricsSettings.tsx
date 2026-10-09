@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createSignal, createResource, createMemo, Show, For } from 'solid-js';
 import { Plus, Edit, Trash2, Activity, Search, X, Copy, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-solid';
-import { api, type MetricDefinition } from '../lib/api';
+import { api, type MetricDefinition, type Threshold } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
 import ColorSwatch from '../components/ColorSwatch';
@@ -13,6 +13,7 @@ import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
 import { useColumnVisibility } from '../lib/useColumnVisibility';
+import { ECHARTS_TYPES } from '../lib/echartsTypes';
 
 const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> = {
   name: '',
@@ -34,6 +35,8 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   threshold_direction: 'higher_is_worse',
   display_format: 'number',
   gauge_animated: true,
+  thresholds: [],
+  chart_type: 'line',
 };
 
 const MetricsSettings: Component = () => {
@@ -151,6 +154,8 @@ const MetricsSettings: Component = () => {
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
       gauge_animated: def.gauge_animated,
+      thresholds: def.thresholds || [],
+      chart_type: def.chart_type || 'line',
     });
     setMetricTab('metric');
     setShowMetricModal(true);
@@ -178,6 +183,8 @@ const MetricsSettings: Component = () => {
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
       gauge_animated: def.gauge_animated,
+      thresholds: def.thresholds || [],
+      chart_type: def.chart_type || 'line',
     });
     setMetricTab('metric');
     setShowMetricModal(true);
@@ -471,6 +478,14 @@ const MetricsSettings: Component = () => {
                   <option value="bits">Bits (Kb/Mb/Gb/Tb)</option>
                 </select>
               </div>
+              <div>
+                <label for="metric-chart-type" class="block text-xs text-muted mb-1.5">Chart Type</label>
+                <select id="metric-chart-type" value={metricForm().chart_type} onChange={(e) => setMetricForm(f => ({ ...f, chart_type: e.currentTarget.value }))} class="input w-full">
+                  <For each={ECHARTS_TYPES}>
+                    {(t) => <option value={t.value}>{t.label}</option>}
+                  </For>
+                </select>
+              </div>
             </div>
             </Show>
             <Show when={metricTab() === 'health'}>
@@ -513,6 +528,51 @@ const MetricsSettings: Component = () => {
                     <option value="true">Yes — animate on load</option>
                     <option value="false">No — static</option>
                   </select>
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-xs text-muted mb-1.5">Custom threshold bands</label>
+                  <div class="space-y-1.5">
+                    <For each={metricForm().thresholds}>
+                      {(t, i) => (
+                        <div class="flex items-center gap-2">
+                          <input
+                            type="number"
+                            step="any"
+                            value={t().value}
+                            onInput={(e) => setMetricForm(f => {
+                              const thresholds = [...f.thresholds];
+                              thresholds[i()] = { ...thresholds[i()], value: parseFloat(e.currentTarget.value) || 0 };
+                              return { ...f, thresholds };
+                            })}
+                            placeholder="Value"
+                            class="input flex-1"
+                          />
+                          <ColorSwatch value={t().color} onChange={(c) => setMetricForm(f => {
+                            const thresholds = [...f.thresholds];
+                            thresholds[i()] = { ...thresholds[i()], color: c };
+                            return { ...f, thresholds };
+                          })} />
+                          <button
+                            type="button"
+                            onClick={() => setMetricForm(f => ({ ...f, thresholds: f.thresholds.filter((_, j) => j !== i()) }))}
+                            class="btn btn-ghost text-xs text-red-400"
+                            title="Remove"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </For>
+                    <button
+                      type="button"
+                      onClick={() => setMetricForm(f => ({ ...f, thresholds: [...f.thresholds, { value: 0, color: '#10b981' }] }))}
+                      class="btn btn-ghost text-xs"
+                    >
+                      <Plus size={12} />
+                      Add threshold
+                    </button>
+                  </div>
+                  <p class="text-[10px] text-muted mt-1">Each threshold marks the start of a color band. Sorted by value.</p>
                 </div>
               </div>
             </div>

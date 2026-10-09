@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findHealthValue, formatHealthValue, healthColor, formatUptime, gaugeRange } from '../src/lib/health.ts';
+import { findHealthValue, formatHealthValue, healthColor, formatUptime, gaugeRange, thresholdBandColor, gaugeZones, thresholdLines } from '../src/lib/health.ts';
 
 const baseDef = {
   id: 1, name: 'RX Power', description: '', device_type_match: '*',
@@ -164,4 +164,127 @@ test('gaugeRange lower_is_worse: falls back to value-based range when no thresho
   const r = gaugeRange(100, def);
   assert.equal(r.min, 50);
   assert.equal(r.max, 200);
+});
+
+// thresholdBandColor
+test('thresholdBandColor returns null when no thresholds', () => {
+  assert.equal(thresholdBandColor(50, []), null);
+});
+
+test('thresholdBandColor returns the first band color when value is below all thresholds', () => {
+  const thresholds = [
+    { value: 80, color: '#f59e0b' },
+    { value: 90, color: '#ef4444' },
+  ];
+  assert.equal(thresholdBandColor(50, thresholds), '#f59e0b');
+});
+
+test('thresholdBandColor returns the matching band color', () => {
+  const thresholds = [
+    { value: 80, color: '#f59e0b' },
+    { value: 90, color: '#ef4444' },
+  ];
+  assert.equal(thresholdBandColor(85, thresholds), '#f59e0b');
+  assert.equal(thresholdBandColor(95, thresholds), '#ef4444');
+});
+
+test('thresholdBandColor handles unsorted thresholds', () => {
+  const thresholds = [
+    { value: 90, color: '#ef4444' },
+    { value: 80, color: '#f59e0b' },
+  ];
+  assert.equal(thresholdBandColor(85, thresholds), '#f59e0b');
+});
+
+test('thresholdBandColor returns the last band color when value exceeds all thresholds', () => {
+  const thresholds = [
+    { value: 80, color: '#f59e0b' },
+    { value: 90, color: '#ef4444' },
+  ];
+  assert.equal(thresholdBandColor(95, thresholds), '#ef4444');
+});
+
+// gaugeZones
+test('gaugeZones returns empty array when no thresholds', () => {
+  assert.deepEqual(gaugeZones([], 0, 100), []);
+});
+
+test('gaugeZones creates zones from thresholds', () => {
+  const thresholds = [
+    { value: 80, color: '#f59e0b' },
+    { value: 90, color: '#ef4444' },
+  ];
+  const zones = gaugeZones(thresholds, 0, 100);
+  assert.equal(zones.length, 4);
+  assert.deepEqual(zones[0], [0, '#f59e0b']);
+  assert.deepEqual(zones[1], [0.8, '#f59e0b']);
+  assert.deepEqual(zones[2], [0.9, '#ef4444']);
+  assert.deepEqual(zones[3], [1, '#ef4444']);
+});
+
+test('gaugeZones handles unsorted thresholds', () => {
+  const thresholds = [
+    { value: 90, color: '#ef4444' },
+    { value: 80, color: '#f59e0b' },
+  ];
+  const zones = gaugeZones(thresholds, 0, 100);
+  assert.equal(zones.length, 4);
+  assert.deepEqual(zones[0], [0, '#f59e0b']);
+  assert.deepEqual(zones[1], [0.8, '#f59e0b']);
+  assert.deepEqual(zones[2], [0.9, '#ef4444']);
+  assert.deepEqual(zones[3], [1, '#ef4444']);
+});
+
+test('gaugeZones clamps to min/max range', () => {
+  const thresholds = [
+    { value: 20, color: '#10b981' },
+    { value: 50, color: '#f59e0b' },
+    { value: 80, color: '#ef4444' },
+  ];
+  const zones = gaugeZones(thresholds, 30, 70);
+  // 20 is below min (30), so it's clamped out; 50 and 80 are in range
+  // 50 -> (50-30)/40 = 0.5, 80 -> (80-30)/40 = 1.25 -> clamped out (>1)
+  assert.equal(zones.length, 3);
+  assert.deepEqual(zones[0], [0, '#f59e0b']);
+  assert.deepEqual(zones[1], [0.5, '#f59e0b']);
+  assert.deepEqual(zones[2], [1, '#f59e0b']);
+});
+
+// thresholdLines
+test('thresholdLines returns empty array when no thresholds or warn/critical', () => {
+  const def = { ...baseDef, thresholds: [], warn_threshold: null, critical_threshold: null };
+  assert.deepEqual(thresholdLines(def), []);
+});
+
+test('thresholdLines creates lines from custom thresholds', () => {
+  const def = { ...baseDef, thresholds: [
+    { value: 80, color: '#f59e0b' },
+    { value: 90, color: '#ef4444' },
+  ]};
+  const lines = thresholdLines(def);
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].value, 80);
+  assert.equal(lines[0].color, '#f59e0b');
+  assert.equal(lines[1].value, 90);
+  assert.equal(lines[1].color, '#ef4444');
+});
+
+test('thresholdLines falls back to warn/critical when no custom thresholds', () => {
+  const def = { ...baseDef, thresholds: [], warn_threshold: 80, critical_threshold: 90 };
+  const lines = thresholdLines(def);
+  assert.equal(lines.length, 2);
+  assert.equal(lines[0].value, 80);
+  assert.equal(lines[0].color, '#f59e0b');
+  assert.equal(lines[1].value, 90);
+  assert.equal(lines[1].color, '#f43f5e');
+});
+
+test('thresholdLines prefers custom thresholds over warn/critical', () => {
+  const def = { ...baseDef, thresholds: [
+    { value: 50, color: '#10b981' },
+  ], warn_threshold: 80, critical_threshold: 90 };
+  const lines = thresholdLines(def);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].value, 50);
+  assert.equal(lines[0].color, '#10b981');
 });
