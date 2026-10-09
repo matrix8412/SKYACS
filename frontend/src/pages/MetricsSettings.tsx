@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js';
 import { createSignal, createResource, createMemo, Show, For } from 'solid-js';
 import { Plus, Edit, Trash2, Activity, Search, X, Copy, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-solid';
-import { api, type MetricDefinition, type Threshold } from '../lib/api';
+import { api, type MetricDefinition } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
 import ColorSwatch from '../components/ColorSwatch';
@@ -538,7 +538,7 @@ const MetricsSettings: Component = () => {
                           <input
                             type="number"
                             step="any"
-                            value={t().value}
+                            value={t.value}
                             onInput={(e) => setMetricForm(f => {
                               const thresholds = [...f.thresholds];
                               thresholds[i()] = { ...thresholds[i()], value: parseFloat(e.currentTarget.value) || 0 };
@@ -547,7 +547,7 @@ const MetricsSettings: Component = () => {
                             placeholder="Value"
                             class="input flex-1"
                           />
-                          <ColorSwatch value={t().color} onChange={(c) => setMetricForm(f => {
+                          <ColorSwatch value={t.color} onChange={(c) => setMetricForm(f => {
                             const thresholds = [...f.thresholds];
                             thresholds[i()] = { ...thresholds[i()], color: c };
                             return { ...f, thresholds };

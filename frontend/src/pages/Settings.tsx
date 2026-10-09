@@ -32,6 +32,8 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   threshold_direction: 'higher_is_worse',
   display_format: 'number',
   gauge_animated: true,
+  thresholds: [],
+  chart_type: 'line',
 };
 
 const Settings: Component = () => {
@@ -107,6 +109,8 @@ const Settings: Component = () => {
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
       gauge_animated: def.gauge_animated,
+      thresholds: def.thresholds || [],
+      chart_type: def.chart_type || 'line',
     });
     setMetricTab('metric');
     setShowMetricModal(true);
