@@ -216,6 +216,21 @@ func (r *Router) handleGetDeviceMetrics(w http.ResponseWriter, req *http.Request
 	respondJSON(w, http.StatusOK, map[string]interface{}{"aggregates": rows})
 }
 
+func (r *Router) handleGetDeviceTypes(w http.ResponseWriter, req *http.Request) {
+	var types []string
+	if err := r.db.Model(&models.Device{}).
+		Where("manufacturer IS NOT NULL AND product_class IS NOT NULL AND manufacturer <> '' AND product_class <> ''").
+		Distinct().
+		Pluck("manufacturer || '/' || product_class", &types).Error; err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to list device types")
+		return
+	}
+	if types == nil {
+		types = []string{}
+	}
+	respondJSON(w, http.StatusOK, types)
+}
+
 func validateMetricDefinition(def *models.MetricDefinition) error {
 	if def.Name == "" || len(def.Name) > 128 {
 		return errors.New("metric name is required and must be at most 128 characters")

@@ -12,9 +12,9 @@ import (
 //   - "universal": collected from both sources
 type MetricDefinition struct {
 	ID              int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	Name            string    `json:"name" gorm:"uniqueIndex;not null"`
+	Name            string    `json:"name" gorm:"not null;uniqueIndex:idx_metric_name_match,priority:1"`
 	Description     string    `json:"description"`
-	DeviceTypeMatch string    `json:"device_type_match" gorm:"not null;default:'*'"`
+	DeviceTypeMatch string    `json:"device_type_match" gorm:"not null;default:'*';uniqueIndex:idx_metric_name_match,priority:2"`
 	ParameterName   string    `json:"parameter_name" gorm:"not null"`
 	Unit            string    `json:"unit"`
 	Source          string    `json:"source" gorm:"not null;default:'passive'"`

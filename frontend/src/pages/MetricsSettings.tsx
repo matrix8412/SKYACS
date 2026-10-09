@@ -36,6 +36,7 @@ const MetricsSettings: Component = () => {
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
 
   const [metrics, { refetch: refetchMetrics }] = createResource(api.getMetricDefinitions);
+  const [deviceTypes] = createResource(api.getDeviceTypes);
   const [editingMetric, setEditingMetric] = createSignal<MetricDefinition | null>(null);
   const [showMetricModal, setShowMetricModal] = createSignal(false);
   const [metricForm, setMetricForm] = createSignal<Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>>(EMPTY_METRIC);
@@ -326,6 +327,21 @@ const MetricsSettings: Component = () => {
             <div>
               <label for="metric-device-match" class="block text-xs text-muted mb-1.5">Device Type Match (glob)</label>
               <input id="metric-device-match" type="text" value={metricForm().device_type_match} onInput={(e) => setMetricForm(f => ({ ...f, device_type_match: e.currentTarget.value }))} placeholder="* (all) or Zyxel/VMG3625" class="input w-full font-mono text-xs" />
+              <Show when={deviceTypes() && deviceTypes()!.length > 0}>
+                <div class="flex flex-wrap gap-1 mt-1.5">
+                  <For each={deviceTypes()!}>
+                    {(dt) => (
+                      <button
+                        type="button"
+                        onClick={() => setMetricForm(f => ({ ...f, device_type_match: dt }))}
+                        class={`px-1.5 py-0.5 rounded text-[10px] font-mono transition-colors ${metricForm().device_type_match === dt ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-500/40' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'}`}
+                      >
+                        {dt}
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
             </div>
             <div class="grid grid-cols-2 gap-3">
               <div>

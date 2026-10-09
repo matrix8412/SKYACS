@@ -183,6 +183,7 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("PUT /metrics/definitions/{id}", auth.RequirePermission(models.PermMetricsWrite)(r.handleUpdateMetricDefinition))
 	apiMux.HandleFunc("DELETE /metrics/definitions/{id}", auth.RequirePermission(models.PermMetricsWrite)(r.handleDeleteMetricDefinition))
 	apiMux.HandleFunc("GET /device/{serial}/metrics", auth.RequirePermission(models.PermMetricsRead)(r.handleGetDeviceMetrics))
+	apiMux.HandleFunc("GET /devices/device-types", auth.RequirePermission(models.PermMetricsRead)(r.handleGetDeviceTypes))
 
 	// Security center
 	apiMux.HandleFunc("GET /security/overview", auth.RequirePermission(models.PermSecurityRead)(r.handleSecurityOverview))
