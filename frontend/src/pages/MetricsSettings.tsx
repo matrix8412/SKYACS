@@ -571,7 +571,7 @@ const MetricsSettings: Component = () => {
                             value={t.value}
                             onInput={(e) => setMetricForm(f => {
                               const thresholds = [...f.thresholds];
-                              thresholds[i()] = { ...thresholds[i()], value: parseFloat(e.currentTarget.value) || 0 };
+                              thresholds[i()].value = parseFloat(e.currentTarget.value) || 0;
                               return { ...f, thresholds };
                             })}
                             placeholder="Value"
@@ -579,7 +579,7 @@ const MetricsSettings: Component = () => {
                           />
                           <ColorSwatch value={t.color} onChange={(c) => setMetricForm(f => {
                             const thresholds = [...f.thresholds];
-                            thresholds[i()] = { ...thresholds[i()], color: c };
+                            thresholds[i()].color = c;
                             return { ...f, thresholds };
                           })} />
                           <button
