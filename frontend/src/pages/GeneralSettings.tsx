@@ -32,7 +32,7 @@ const GeneralSettings: Component = () => {
     const showPoints = getValue('chart_show_points') !== 'false' ? 'true' : 'false';
     setSaving(true);
     try {
-      await api.updateSettings({ default_page_size: String(pageSize), chart_show_points: showPoints, app_name: appName, default_refresh_interval: getValue('default_refresh_interval') || '30000' });
+      await api.updateSettings({ default_page_size: String(pageSize), chart_show_points: showPoints, app_name: appName });
       notify({ tone: 'success', title: 'Settings saved', message: 'General settings have been updated.' });
       refetch();
       setFormData({});
@@ -76,22 +76,6 @@ const GeneralSettings: Component = () => {
                 disabled={!isFullAccess()}
               />
               <p class="text-[11px] text-muted mt-1">Applies to device lists, fault tables, provisioning rules, and other paginated views.</p>
-            </div>
-            <div>
-              <label for="default-refresh-interval" class="block text-xs text-muted mb-1.5">Default auto-refresh interval</label>
-              <select
-                id="default-refresh-interval"
-                value={getValue('default_refresh_interval') || '30000'}
-                onChange={(e) => setFormData((prev) => ({ ...prev, default_refresh_interval: e.currentTarget.value }))}
-                class="input w-32"
-                disabled={!isFullAccess()}
-              >
-                <option value="0">Off</option>
-                <option value="10000">10 s</option>
-                <option value="30000">30 s</option>
-                <option value="60000">60 s</option>
-              </select>
-              <p class="text-[11px] text-muted mt-1">Default interval for the device detail auto-refresh. Users can override per-device.</p>
             </div>
             <div>
               <label for="app-name" class="block text-xs text-muted mb-1.5">Application name</label>

@@ -70,7 +70,6 @@ const DeviceDetail: Component = () => {
   const [tasks, { refetch: refetchTasks }] = createResource(serial, api.getDeviceTasks);
   const [deviceFaults, { refetch: refetchDeviceFaults }] = createResource(serial, api.getDeviceFaults);
   const [metricDefs] = createResource(api.getMetricDefinitions);
-  const [settings] = createResource(api.getSettings);
   const [taskPage, setTaskPage] = createSignal(0);
   const [selectedTask, setSelectedTask] = createSignal<Task | null>(null);
   const [taskDetailTab, setTaskDetailTab] = createSignal<'requested' | 'result'>('requested');
@@ -220,17 +219,6 @@ const DeviceDetail: Component = () => {
   const [lanModalIndex, setLanModalIndex] = createSignal<number | null>(null);
   const [wanModalPath, setWanModalPath] = createSignal<string | null>(null);
 
-  const [refreshInterval, setRefreshInterval] = createSignal<number>(
-    parseInt(localStorage.getItem(`skyacs_auto_refresh_${params.serial}`) ?? '30000', 10)
-  );
-  createEffect(() => {
-    const s = settings();
-    if (!s) return;
-    const stored = localStorage.getItem(`skyacs_auto_refresh_${params.serial}`);
-    if (stored === null) {
-      setRefreshInterval(parseInt(s['default_refresh_interval'] ?? '30000', 10));
-    }
-  });
   const [selectedParam, setSelectedParam] = createSignal<{ name: string; value: string } | null>(null);
   const [editingModemCreds, setEditingModemCreds] = createSignal(false);
   const [showSensitive, setShowSensitive] = createSignal(false);
@@ -410,19 +398,6 @@ const DeviceDetail: Component = () => {
     setShowFactoryResetModal(false);
     setFactoryResetPassword('');
   };
-
-  createEffect(() => {
-    const intervalMs = refreshInterval();
-    if (intervalMs <= 0) return;
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        refetchDevice();
-        refetchParams();
-        refetchTasks();
-      }
-    }, intervalMs);
-    onCleanup(() => clearInterval(interval));
-  });
 
   createEffect(() => {
     const s = serial();
@@ -1108,21 +1083,6 @@ const DeviceDetail: Component = () => {
             <RefreshCw size={14} />
             <span class="hidden sm:inline">Refresh</span>
           </button>
-          <select
-            class="input text-xs py-1 w-auto"
-            value={String(refreshInterval())}
-            onChange={(e) => {
-              const val = parseInt(e.currentTarget.value, 10);
-              setRefreshInterval(val);
-              localStorage.setItem(`skyacs_auto_refresh_${serial()}`, String(val));
-            }}
-            aria-label="Auto-refresh interval"
-          >
-            <option value="0">Off</option>
-            <option value="10000">10 s</option>
-            <option value="30000">30 s</option>
-            <option value="60000">60 s</option>
-          </select>
           <Show when={isFullAccess()}>
             <div class="relative" ref={actionsMenu}>
               <button type="button" class="icon-button" aria-label="Device actions" aria-haspopup="menu" aria-expanded={showActionsMenu()} onClick={() => setShowActionsMenu(value => !value)}>
