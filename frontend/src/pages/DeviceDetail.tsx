@@ -4,6 +4,7 @@ import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
 import { ArrowLeft, RefreshCw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Key, Eye, EyeOff, Plus, Tags, Activity, AlertTriangle, Check, Download, Search, MoreVertical } from 'lucide-solid';
 import { api, type MetricDefinition, type Task } from '../lib/api';
 import { formatUptime, findHealthValue, formatHealthValue, healthColor, gaugeRange, type HealthTile } from '../lib/health';
+import { metricsTabMetrics, healthPanelMetrics } from '../lib/metricViews';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
 import HealthGauge from '../components/HealthGauge';
@@ -359,7 +360,7 @@ const DeviceDetail: Component = () => {
   });
 
   const groupedMetrics = createMemo(() => {
-    const metrics = matchingMetrics().filter(d => !d.health);
+    const metrics = metricsTabMetrics(matchingMetrics());
     const groups: MetricDefinition[][] = [];
     const groupMap = new Map<string, MetricDefinition[]>();
 
@@ -805,7 +806,7 @@ const DeviceDetail: Component = () => {
   };
 
   const healthTiles = createMemo<HealthTile[]>(() => {
-    const defs = matchingMetrics().filter(d => d.health);
+    const defs = healthPanelMetrics(matchingMetrics());
     if (defs.length > 0) {
       return defs.map(def => {
         const v = findHealthValue(parameters() || [], def);

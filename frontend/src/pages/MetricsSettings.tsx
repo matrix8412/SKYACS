@@ -523,8 +523,8 @@ const MetricsSettings: Component = () => {
                 <div>
                   <label for="metric-health" class="block text-xs text-muted mb-1.5">Show in Device Health</label>
                   <select id="metric-health" value={metricForm().health ? 'true' : 'false'} onChange={(e) => setMetricForm(f => ({ ...f, health: e.currentTarget.value === 'true' }))} class="input w-full">
-                    <option value="false">No — chart only</option>
-                    <option value="true">Yes — show in Device Health</option>
+                    <option value="false">No — Metrics tab only</option>
+                    <option value="true">Yes — Metrics tab + Device Health</option>
                   </select>
                 </div>
                 <div>
