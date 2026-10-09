@@ -102,6 +102,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
   let chart: echarts.ECharts | null = null;
   let resizeObserver: ResizeObserver | null = null;
+  let chartBoundEl: HTMLElement | null = null;
 
   const [settings] = createResource(() => api.getSettings());
   const chartShowPoints = createMemo(() => settings()?.['chart_show_points'] !== 'false');
@@ -338,12 +339,15 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     if (!el) return;
     const s = seriesData();
     if (!s) {
-      if (chart) { chart.dispose(); chart = null; }
+      if (chart) { chart.dispose(); chart = null; chartBoundEl = null; }
       return;
     }
 
-    if (!chart) {
+    if (!chart || chartBoundEl !== el) {
+      if (chart) { chart.dispose(); }
+      if (resizeObserver) { resizeObserver.disconnect(); }
       chart = echarts.init(el, null, { renderer: 'canvas' });
+      chartBoundEl = el;
       resizeObserver = new ResizeObserver(() => {
         if (chart) chart.resize();
       });
@@ -362,6 +366,7 @@ const MetricChart: Component<MetricChartProps> = (props) => {
   onCleanup(() => {
     if (resizeObserver) resizeObserver.disconnect();
     if (chart) { chart.dispose(); chart = null; }
+    chartBoundEl = null;
   });
 
   const handleBucketChange = (opt: typeof BUCKET_OPTIONS[number]) => {
