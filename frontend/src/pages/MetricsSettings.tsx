@@ -15,6 +15,16 @@ import { usePageSize } from '../lib/usePageSize';
 import { useColumnVisibility } from '../lib/useColumnVisibility';
 import { ECHARTS_TYPES } from '../lib/echartsTypes';
 
+const CHART_TYPE_GROUPS: { category: string; types: typeof ECHARTS_TYPES }[] = (() => {
+  const map = new Map<string, typeof ECHARTS_TYPES>();
+  for (const t of ECHARTS_TYPES) {
+    const arr = map.get(t.category) || [];
+    arr.push(t);
+    map.set(t.category, arr);
+  }
+  return [...map.entries()].map(([category, types]) => ({ category, types }));
+})();
+
 const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> = {
   name: '',
   description: '',
@@ -481,8 +491,14 @@ const MetricsSettings: Component = () => {
               <div>
                 <label for="metric-chart-type" class="block text-xs text-muted mb-1.5">Chart Type</label>
                 <select id="metric-chart-type" value={metricForm().chart_type} onChange={(e) => setMetricForm(f => ({ ...f, chart_type: e.currentTarget.value }))} class="input w-full">
-                  <For each={ECHARTS_TYPES}>
-                    {(t) => <option value={t.value}>{t.label}</option>}
+                  <For each={CHART_TYPE_GROUPS}>
+                    {(g) => (
+                      <optgroup label={g.category}>
+                        <For each={g.types}>
+                          {(t) => <option value={t.value}>{t.label}</option>}
+                        </For>
+                      </optgroup>
+                    )}
                   </For>
                 </select>
               </div>
@@ -527,6 +543,20 @@ const MetricsSettings: Component = () => {
                   <select id="metric-gauge-animated" value={metricForm().gauge_animated ? 'true' : 'false'} onChange={(e) => setMetricForm(f => ({ ...f, gauge_animated: e.currentTarget.value === 'true' }))} class="input w-full">
                     <option value="true">Yes — animate on load</option>
                     <option value="false">No — static</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="metric-chart-type-health" class="block text-xs text-muted mb-1.5">Chart Type</label>
+                  <select id="metric-chart-type-health" value={metricForm().chart_type} onChange={(e) => setMetricForm(f => ({ ...f, chart_type: e.currentTarget.value }))} class="input w-full">
+                    <For each={CHART_TYPE_GROUPS}>
+                      {(g) => (
+                        <optgroup label={g.category}>
+                          <For each={g.types}>
+                            {(t) => <option value={t.value}>{t.label}</option>}
+                          </For>
+                        </optgroup>
+                      )}
+                    </For>
                   </select>
                 </div>
                 <div class="col-span-2">
