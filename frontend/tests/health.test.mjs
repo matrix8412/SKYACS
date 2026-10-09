@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findHealthValue, formatHealthValue, healthColor, formatUptime } from '../src/lib/health.ts';
+import { findHealthValue, formatHealthValue, healthColor, formatUptime, gaugeRange } from '../src/lib/health.ts';
 
 const baseDef = {
   id: 1, name: 'RX Power', description: '', device_type_match: '*',
@@ -107,4 +107,61 @@ test('formatUptime accepts a numeric string', () => {
 
 test('formatUptime returns a dash for non-positive values', () => {
   assert.equal(formatUptime(0), '-');
+});
+
+// gaugeRange
+test('gaugeRange higher_is_worse: uses critical as max', () => {
+  const def = { ...baseDef, warn_threshold: 80, critical_threshold: 100 };
+  const r = gaugeRange(50, def);
+  assert.equal(r.min, 0);
+  assert.equal(r.max, 100);
+});
+
+test('gaugeRange higher_is_worse: falls back to warn * 1.5 when no critical', () => {
+  const def = { ...baseDef, warn_threshold: 80, critical_threshold: null };
+  const r = gaugeRange(50, def);
+  assert.equal(r.min, 0);
+  assert.equal(r.max, 120);
+});
+
+test('gaugeRange higher_is_worse: falls back to value * 1.5 when no thresholds', () => {
+  const def = { ...baseDef, warn_threshold: null, critical_threshold: null };
+  const r = gaugeRange(60, def);
+  assert.equal(r.min, 0);
+  assert.equal(r.max, 90);
+});
+
+test('gaugeRange higher_is_worse: defaults to 100 when value is 0 and no thresholds', () => {
+  const def = { ...baseDef, warn_threshold: null, critical_threshold: null };
+  const r = gaugeRange(0, def);
+  assert.equal(r.min, 0);
+  assert.equal(r.max, 100);
+});
+
+test('gaugeRange higher_is_worse: handles null value', () => {
+  const def = { ...baseDef, warn_threshold: null, critical_threshold: null };
+  const r = gaugeRange(null, def);
+  assert.equal(r.min, 0);
+  assert.equal(r.max, 100);
+});
+
+test('gaugeRange lower_is_worse: uses critical as min and warn * 2 as max', () => {
+  const def = { ...baseDef, threshold_direction: 'lower_is_worse', warn_threshold: 100, critical_threshold: 50 };
+  const r = gaugeRange(80, def);
+  assert.equal(r.min, 50);
+  assert.equal(r.max, 200);
+});
+
+test('gaugeRange lower_is_worse: falls back to warn * 0.5 for min when no critical', () => {
+  const def = { ...baseDef, threshold_direction: 'lower_is_worse', warn_threshold: 100, critical_threshold: null };
+  const r = gaugeRange(80, def);
+  assert.equal(r.min, 50);
+  assert.equal(r.max, 200);
+});
+
+test('gaugeRange lower_is_worse: falls back to value-based range when no thresholds', () => {
+  const def = { ...baseDef, threshold_direction: 'lower_is_worse', warn_threshold: null, critical_threshold: null };
+  const r = gaugeRange(100, def);
+  assert.equal(r.min, 50);
+  assert.equal(r.max, 200);
 });

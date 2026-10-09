@@ -288,9 +288,9 @@ func validateMetricDefinition(def *models.MetricDefinition) error {
 		return errors.New("threshold_direction must be 'higher_is_worse' or 'lower_is_worse'")
 	}
 	switch def.DisplayFormat {
-	case "", "number", "uptime":
+	case "", "number", "uptime", "gauge":
 	default:
-		return errors.New("display_format must be 'number' or 'uptime'")
+		return errors.New("display_format must be 'number', 'uptime', or 'gauge'")
 	}
 	return nil
 }

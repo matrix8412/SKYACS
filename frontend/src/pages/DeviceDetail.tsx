@@ -3,9 +3,10 @@ import { createResource, createSignal, Show, For, createEffect, createMemo, onCl
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
 import { ArrowLeft, RefreshCw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Key, Eye, EyeOff, Plus, Tags, Activity, AlertTriangle, Check, Download, Search, MoreVertical } from 'lucide-solid';
 import { api, type MetricDefinition, type Task } from '../lib/api';
-import { formatUptime, findHealthValue, formatHealthValue, healthColor, type HealthTile } from '../lib/health';
+import { formatUptime, findHealthValue, formatHealthValue, healthColor, gaugeRange, type HealthTile } from '../lib/health';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
+import HealthGauge from '../components/HealthGauge';
 import { useFeedback } from '../components/Feedback';
 import { EmptyState, ResourceError } from '../components/ResourceState';
 import MetricChart from '../components/MetricChart';
@@ -808,13 +809,23 @@ const DeviceDetail: Component = () => {
     if (defs.length > 0) {
       return defs.map(def => {
         const v = findHealthValue(parameters() || [], def);
-        return { label: def.name, value: formatHealthValue(v, def), color: healthColor(v, def) };
+        const range = def.display_format === 'gauge' ? gaugeRange(v, def) : undefined;
+        return {
+          label: def.name,
+          value: formatHealthValue(v, def),
+          color: healthColor(v, def),
+          raw: v,
+          format: def.display_format,
+          min: range?.min,
+          max: range?.max,
+          animated: def.gauge_animated,
+        };
       });
     }
     return [
-      { label: 'Uptime', value: getDeviceUptime() ? formatUptime(getDeviceUptime()!) : '-', color: getUptimeColor() },
-      { label: 'RX dBm', value: getRxPower(), color: getRxPowerColor() },
-      { label: 'Temperature', value: `${getTemperature()}°`, color: getTempColor() },
+      { label: 'Uptime', value: getDeviceUptime() ? formatUptime(getDeviceUptime()!) : '-', color: getUptimeColor(), format: 'number' },
+      { label: 'RX dBm', value: getRxPower(), color: getRxPowerColor(), format: 'number' },
+      { label: 'Temperature', value: `${getTemperature()}°`, color: getTempColor(), format: 'number' },
     ];
   });
 
@@ -1258,10 +1269,23 @@ const DeviceDetail: Component = () => {
                   <For each={healthTiles()}>
                     {(tile) => (
                       <div>
-                        <div class={`text-lg font-bold font-mono ${tile.color}`}>
-                          {tile.value}
-                        </div>
-                        <div class="text-[10px] text-muted mt-0.5">{tile.label}</div>
+                        <Show when={tile.format === 'gauge'}>
+                          <HealthGauge
+                            value={tile.raw ?? null}
+                            min={tile.min ?? 0}
+                            max={tile.max ?? 100}
+                            color={tile.color}
+                            label={tile.label}
+                            centerText={tile.value}
+                            animated={tile.animated ?? true}
+                          />
+                        </Show>
+                        <Show when={tile.format !== 'gauge'}>
+                          <div class={`text-lg font-bold font-mono ${tile.color}`}>
+                            {tile.value}
+                          </div>
+                          <div class="text-[10px] text-muted mt-0.5">{tile.label}</div>
+                        </Show>
                       </div>
                     )}
                   </For>

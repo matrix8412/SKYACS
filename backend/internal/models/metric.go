@@ -30,6 +30,7 @@ type MetricDefinition struct {
 	CriticalThreshold  *float64  `json:"critical_threshold"`
 	ThresholdDirection string    `json:"threshold_direction" gorm:"not null;default:'higher_is_worse'"`
 	DisplayFormat      string    `json:"display_format" gorm:"not null;default:'number'"`
+	GaugeAnimated      bool      `json:"gauge_animated" gorm:"default:true"`
 	CreatedAt          time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt          time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }

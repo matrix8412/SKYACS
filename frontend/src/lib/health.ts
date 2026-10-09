@@ -4,6 +4,11 @@ export interface HealthTile {
   label: string;
   value: string;
   color: string;
+  raw?: number | null;
+  format?: string;
+  min?: number;
+  max?: number;
+  animated?: boolean;
 }
 
 export function formatUptime(seconds: number | string): string {
@@ -45,4 +50,21 @@ export function healthColor(v: number | null, def: MetricDefinition): string {
   if (crit !== null && v >= crit) return 'text-rose-400';
   if (warn !== null && v >= warn) return 'text-amber-400';
   return 'text-emerald-400';
+}
+
+export function gaugeRange(v: number | null, def: MetricDefinition): { min: number; max: number } {
+  const warn = def.warn_threshold;
+  const crit = def.critical_threshold;
+  const val = v ?? 0;
+
+  if (def.threshold_direction === 'lower_is_worse') {
+    const min = crit ?? (warn !== null ? warn * 0.5 : Math.max(0, val * 0.5));
+    const max = warn !== null ? warn * 2 : (crit !== null ? crit * 2 : (val !== 0 ? val * 2 : 100));
+    return { min, max: max > min ? max : min + 100 };
+  }
+
+  // higher_is_worse (default)
+  const min = 0;
+  const max = crit ?? (warn !== null ? warn * 1.5 : (val > 0 ? val * 1.5 : 100));
+  return { min, max: max > 0 ? max : 100 };
 }

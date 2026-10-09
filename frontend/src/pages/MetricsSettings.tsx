@@ -33,6 +33,7 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   critical_threshold: null,
   threshold_direction: 'higher_is_worse',
   display_format: 'number',
+  gauge_animated: true,
 };
 
 const MetricsSettings: Component = () => {
@@ -45,6 +46,7 @@ const MetricsSettings: Component = () => {
   const [editingMetric, setEditingMetric] = createSignal<MetricDefinition | null>(null);
   const [showMetricModal, setShowMetricModal] = createSignal(false);
   const [metricForm, setMetricForm] = createSignal<Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>>(EMPTY_METRIC);
+  const [metricTab, setMetricTab] = createSignal<'metric' | 'health'>('metric');
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [searchQuery, setSearchQuery] = createSignal('');
   const [sortBy, setSortBy] = createSignal<{ column: string; direction: 'asc' | 'desc' } | null>(null);
@@ -123,6 +125,7 @@ const MetricsSettings: Component = () => {
   const openCreateMetric = () => {
     setEditingMetric(null);
     setMetricForm(EMPTY_METRIC);
+    setMetricTab('metric');
     setShowMetricModal(true);
   };
 
@@ -147,7 +150,9 @@ const MetricsSettings: Component = () => {
       critical_threshold: def.critical_threshold,
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
+      gauge_animated: def.gauge_animated,
     });
+    setMetricTab('metric');
     setShowMetricModal(true);
   };
 
@@ -172,7 +177,9 @@ const MetricsSettings: Component = () => {
       critical_threshold: def.critical_threshold,
       threshold_direction: def.threshold_direction,
       display_format: def.display_format,
+      gauge_animated: def.gauge_animated,
     });
+    setMetricTab('metric');
     setShowMetricModal(true);
   };
 
@@ -369,6 +376,11 @@ const MetricsSettings: Component = () => {
           onClose={() => { if (!pendingAction()) setShowMetricModal(false); }}
         >
           <div class="space-y-4">
+            <div class="flex gap-1 border-b border-zinc-800 pb-2">
+              <button type="button" onClick={() => setMetricTab('metric')} class={`px-3 py-1 rounded text-xs font-medium transition-colors ${metricTab() === 'metric' ? 'bg-sky-500/20 text-sky-300' : 'text-zinc-400 hover:text-zinc-200'}`}>Metric</button>
+              <button type="button" onClick={() => setMetricTab('health')} class={`px-3 py-1 rounded text-xs font-medium transition-colors ${metricTab() === 'health' ? 'bg-sky-500/20 text-sky-300' : 'text-zinc-400 hover:text-zinc-200'}`}>Health</button>
+            </div>
+            <Show when={metricTab() === 'metric'}>
             <div>
               <label for="metric-name" class="block text-xs text-muted mb-1.5">Name</label>
               <input id="metric-name" type="text" value={metricForm().name} onInput={(e) => setMetricForm(f => ({ ...f, name: e.currentTarget.value }))} placeholder="e.g. Uptime, CPU Load" class="input w-full" />
@@ -460,6 +472,8 @@ const MetricsSettings: Component = () => {
                 </select>
               </div>
             </div>
+            </Show>
+            <Show when={metricTab() === 'health'}>
             <div>
               <label class="block text-xs font-medium text-secondary mb-2">Health indicator</label>
               <div class="grid grid-cols-2 gap-3">
@@ -472,9 +486,10 @@ const MetricsSettings: Component = () => {
                 </div>
                 <div>
                   <label for="metric-display-format" class="block text-xs text-muted mb-1.5">Display format</label>
-                  <select id="metric-display-format" value={metricForm().display_format} onChange={(e) => setMetricForm(f => ({ ...f, display_format: e.currentTarget.value as 'number' | 'uptime' }))} class="input w-full">
+                  <select id="metric-display-format" value={metricForm().display_format} onChange={(e) => setMetricForm(f => ({ ...f, display_format: e.currentTarget.value as 'number' | 'uptime' | 'gauge' }))} class="input w-full">
                     <option value="number">Number</option>
                     <option value="uptime">Uptime (d h m s)</option>
+                    <option value="gauge">Gauge graph</option>
                   </select>
                 </div>
                 <div>
@@ -492,8 +507,16 @@ const MetricsSettings: Component = () => {
                     <option value="lower_is_worse">Value is lower</option>
                   </select>
                 </div>
+                <div>
+                  <label for="metric-gauge-animated" class="block text-xs text-muted mb-1.5">Animate gauge</label>
+                  <select id="metric-gauge-animated" value={metricForm().gauge_animated ? 'true' : 'false'} onChange={(e) => setMetricForm(f => ({ ...f, gauge_animated: e.currentTarget.value === 'true' }))} class="input w-full">
+                    <option value="true">Yes — animate on load</option>
+                    <option value="false">No — static</option>
+                  </select>
+                </div>
               </div>
             </div>
+            </Show>
           </div>
           <div class="flex gap-2 pt-4">
             <button type="button" onClick={() => setShowMetricModal(false)} class="btn btn-secondary flex-1" disabled={pendingAction() !== null}>Cancel</button>
