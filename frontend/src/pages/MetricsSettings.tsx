@@ -28,6 +28,11 @@ const EMPTY_METRIC: Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'> =
   transform: '',
   multiplier: 1,
   unit_scale: '',
+  health: false,
+  warn_threshold: null,
+  critical_threshold: null,
+  threshold_direction: 'higher_is_worse',
+  display_format: 'number',
 };
 
 const MetricsSettings: Component = () => {
@@ -137,6 +142,11 @@ const MetricsSettings: Component = () => {
       transform: def.transform,
       multiplier: def.multiplier,
       unit_scale: def.unit_scale,
+      health: def.health,
+      warn_threshold: def.warn_threshold,
+      critical_threshold: def.critical_threshold,
+      threshold_direction: def.threshold_direction,
+      display_format: def.display_format,
     });
     setShowMetricModal(true);
   };
@@ -157,6 +167,11 @@ const MetricsSettings: Component = () => {
       transform: def.transform,
       multiplier: def.multiplier,
       unit_scale: def.unit_scale,
+      health: def.health,
+      warn_threshold: def.warn_threshold,
+      critical_threshold: def.critical_threshold,
+      threshold_direction: def.threshold_direction,
+      display_format: def.display_format,
     });
     setShowMetricModal(true);
   };
@@ -443,6 +458,40 @@ const MetricsSettings: Component = () => {
                   <option value="bytes">Bytes (KB/MB/GB/TB)</option>
                   <option value="bits">Bits (Kb/Mb/Gb/Tb)</option>
                 </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-secondary mb-2">Health indicator</label>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="metric-health" class="block text-xs text-muted mb-1.5">Show in Device Health</label>
+                  <select id="metric-health" value={metricForm().health ? 'true' : 'false'} onChange={(e) => setMetricForm(f => ({ ...f, health: e.currentTarget.value === 'true' }))} class="input w-full">
+                    <option value="false">No — chart only</option>
+                    <option value="true">Yes — show in Device Health</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="metric-display-format" class="block text-xs text-muted mb-1.5">Display format</label>
+                  <select id="metric-display-format" value={metricForm().display_format} onChange={(e) => setMetricForm(f => ({ ...f, display_format: e.currentTarget.value as 'number' | 'uptime' }))} class="input w-full">
+                    <option value="number">Number</option>
+                    <option value="uptime">Uptime (d h m s)</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="metric-warn" class="block text-xs text-muted mb-1.5">Warn threshold</label>
+                  <input id="metric-warn" type="number" step="any" value={metricForm().warn_threshold ?? ''} onInput={(e) => setMetricForm(f => ({ ...f, warn_threshold: e.currentTarget.value === '' ? null : parseFloat(e.currentTarget.value) }))} placeholder="optional" class="input w-full" />
+                </div>
+                <div>
+                  <label for="metric-critical" class="block text-xs text-muted mb-1.5">Critical threshold</label>
+                  <input id="metric-critical" type="number" step="any" value={metricForm().critical_threshold ?? ''} onInput={(e) => setMetricForm(f => ({ ...f, critical_threshold: e.currentTarget.value === '' ? null : parseFloat(e.currentTarget.value) }))} placeholder="optional" class="input w-full" />
+                </div>
+                <div>
+                  <label for="metric-threshold-dir" class="block text-xs text-muted mb-1.5">Worse when</label>
+                  <select id="metric-threshold-dir" value={metricForm().threshold_direction} onChange={(e) => setMetricForm(f => ({ ...f, threshold_direction: e.currentTarget.value as 'higher_is_worse' | 'lower_is_worse' }))} class="input w-full">
+                    <option value="higher_is_worse">Value is higher</option>
+                    <option value="lower_is_worse">Value is lower</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { createResource, createSignal, Show, For, createEffect, createMemo, onCl
 import { useParams, A, useNavigate, useSearchParams } from '@solidjs/router';
 import { ArrowLeft, RefreshCw, Trash2, Server, Network, Radio, Users, Zap, Edit, Save, X, HeartPulse, Key, Eye, EyeOff, Plus, Tags, Activity, AlertTriangle, Check, Download, Search, MoreVertical } from 'lucide-solid';
 import { api, type MetricDefinition, type Task } from '../lib/api';
+import { formatUptime, findHealthValue, formatHealthValue, healthColor, type HealthTile } from '../lib/health';
 import { useAuth } from '../lib/auth';
 import Dialog from '../components/Dialog';
 import { useFeedback } from '../components/Feedback';
@@ -357,7 +358,7 @@ const DeviceDetail: Component = () => {
   });
 
   const groupedMetrics = createMemo(() => {
-    const metrics = matchingMetrics();
+    const metrics = matchingMetrics().filter(d => !d.health);
     const groups: MetricDefinition[][] = [];
     const groupMap = new Map<string, MetricDefinition[]>();
 
@@ -738,17 +739,6 @@ const DeviceDetail: Component = () => {
     return new Date(dateStr).toLocaleString('id-ID');
   };
 
-  const formatUptime = (seconds: number | string) => {
-    const secs = typeof seconds === 'string' ? parseInt(seconds) : seconds;
-    if (isNaN(secs) || secs <= 0) return '-';
-    const days = Math.floor(secs / 86400);
-    const hours = Math.floor((secs % 86400) / 3600);
-    const mins = Math.floor((secs % 3600) / 60);
-    if (days > 0) return `${days}d ${hours}h ${mins}m`;
-    if (hours > 0) return `${hours}h ${mins}m`;
-    return `${mins}m`;
-  };
-
   const getDeviceUptime = () => {
     const params = parameters() || [];
     const uptimeParam = params.find(p => p.name.endsWith('DeviceInfo.UpTime'));
@@ -812,6 +802,21 @@ const DeviceDetail: Component = () => {
     if (secs > 86400) return 'text-sky-400';
     return 'text-amber-400';
   };
+
+  const healthTiles = createMemo<HealthTile[]>(() => {
+    const defs = matchingMetrics().filter(d => d.health);
+    if (defs.length > 0) {
+      return defs.map(def => {
+        const v = findHealthValue(parameters() || [], def);
+        return { label: def.name, value: formatHealthValue(v, def), color: healthColor(v, def) };
+      });
+    }
+    return [
+      { label: 'Uptime', value: getDeviceUptime() ? formatUptime(getDeviceUptime()!) : '-', color: getUptimeColor() },
+      { label: 'RX dBm', value: getRxPower(), color: getRxPowerColor() },
+      { label: 'Temperature', value: `${getTemperature()}°`, color: getTempColor() },
+    ];
+  });
 
   const wanProfiles = createMemo(() => getWanProfiles(parameters() || []));
 
@@ -1250,24 +1255,16 @@ const DeviceDetail: Component = () => {
                   Device Health
                 </h2>
                 <div class="grid grid-cols-3 gap-3 text-center">
-                  <div>
-                    <div class={`text-lg font-bold font-mono ${getUptimeColor()}`}>
-                      {getDeviceUptime() ? formatUptime(getDeviceUptime()!) : '-'}
-                    </div>
-                    <div class="text-[10px] text-muted mt-0.5">Uptime</div>
-                  </div>
-                  <div>
-                    <div class={`text-lg font-bold font-mono ${getRxPowerColor()}`}>
-                      {getRxPower()}
-                    </div>
-                    <div class="text-[10px] text-muted mt-0.5">RX dBm</div>
-                  </div>
-                  <div>
-                    <div class={`text-lg font-bold font-mono ${getTempColor()}`}>
-                      {getTemperature()}°
-                    </div>
-                    <div class="text-[10px] text-muted mt-0.5">Temperature</div>
-                  </div>
+                  <For each={healthTiles()}>
+                    {(tile) => (
+                      <div>
+                        <div class={`text-lg font-bold font-mono ${tile.color}`}>
+                          {tile.value}
+                        </div>
+                        <div class="text-[10px] text-muted mt-0.5">{tile.label}</div>
+                      </div>
+                    )}
+                  </For>
                 </div>
               </div>
             </div>
@@ -2171,8 +2168,8 @@ const DeviceDetail: Component = () => {
             {/* Row 6: All Parameters */}
             <div class="card overflow-hidden">
               <div class="p-5 border-b border-subtle flex items-center justify-between gap-4">
-                <div class="flex items-center gap-3">
-                  <h2 class="text-sm font-medium text-secondary">All Parameters ({filteredParams().length})</h2>
+                <h2 class="text-sm font-medium text-secondary whitespace-nowrap">All Parameters ({filteredParams().length})</h2>
+                <div class="flex items-center gap-2">
                   <input
                     id="parameter-filter"
                     type="search"
@@ -2181,8 +2178,6 @@ const DeviceDetail: Component = () => {
                     placeholder="Filter parameter path…"
                     class="input w-96 py-1.5 text-sm"
                   />
-                </div>
-                <div class="flex items-center gap-2">
                   <button
                     type="button"
                     class="btn btn-secondary text-xs"

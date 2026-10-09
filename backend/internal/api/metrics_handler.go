@@ -49,6 +49,12 @@ func (r *Router) handleCreateMetricDefinition(w http.ResponseWriter, req *http.R
 	if body.DeviceTypeMatch == "" {
 		body.DeviceTypeMatch = "*"
 	}
+	if body.ThresholdDirection == "" {
+		body.ThresholdDirection = "higher_is_worse"
+	}
+	if body.DisplayFormat == "" {
+		body.DisplayFormat = "number"
+	}
 
 	if err := r.metricRepo.Create(req.Context(), &body); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to create metric definition")
@@ -275,6 +281,16 @@ func validateMetricDefinition(def *models.MetricDefinition) error {
 	case "", "auto", "bytes", "bits":
 	default:
 		return errors.New("unit_scale must be '', 'auto', 'bytes', or 'bits'")
+	}
+	switch def.ThresholdDirection {
+	case "", "higher_is_worse", "lower_is_worse":
+	default:
+		return errors.New("threshold_direction must be 'higher_is_worse' or 'lower_is_worse'")
+	}
+	switch def.DisplayFormat {
+	case "", "number", "uptime":
+	default:
+		return errors.New("display_format must be 'number' or 'uptime'")
 	}
 	return nil
 }
