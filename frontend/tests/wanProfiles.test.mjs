@@ -144,3 +144,56 @@ test('discovers SSID5-8 boolean enable paths', () => {
   assert.equal(profiles[0].portParams.ssidEnablePaths[5], 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID5Enable');
   assert.equal(profiles[0].portParams.ssidEnablePaths[8], 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID8Enable');
 });
+
+import { buildExclusiveTieParams } from '../src/lib/wanProfiles.ts';
+
+test('buildExclusiveTieParams: enable on one WAN disables same port on others', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable', value: '0' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Name', value: 'WAN2' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.Lan1Enable', value: '1' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  const params = buildExclusiveTieParams(profiles, profiles[0], 1, 'lan', true);
+  assert.equal(params['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable'], '1');
+  assert.equal(params['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.Lan1Enable'], '0');
+});
+
+test('buildExclusiveTieParams: disable only writes target', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable', value: '1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Name', value: 'WAN2' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.Lan1Enable', value: '0' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  const params = buildExclusiveTieParams(profiles, profiles[0], 1, 'lan', false);
+  assert.equal(params['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable'], '0');
+  assert.equal(Object.keys(params).length, 1);
+});
+
+test('buildExclusiveTieParams: lan and ssid are independent', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable', value: '0' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.SSID1Enable', value: '0' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Name', value: 'WAN2' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.Lan1Enable', value: '1' },
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.SSID1Enable', value: '1' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  const params = buildExclusiveTieParams(profiles, profiles[0], 1, 'lan', true);
+  assert.equal(params['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_HW_LANBIND.Lan1Enable'], '1');
+  assert.equal(params['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.Lan1Enable'], '0');
+  assert.equal(params['InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_HW_LANBIND.SSID1Enable'], undefined);
+});
+
+test('buildExclusiveTieParams: returns empty when target has no portParams', () => {
+  const parameters = [
+    { name: 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.Name', value: 'WAN1' },
+  ];
+  const profiles = getWanProfiles(parameters);
+  const params = buildExclusiveTieParams(profiles, profiles[0], 1, 'lan', true);
+  assert.equal(Object.keys(params).length, 0);
+});

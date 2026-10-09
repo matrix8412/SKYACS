@@ -4,6 +4,7 @@ import { useFeedback } from './Feedback';
 import Dialog from './Dialog';
 import { Save, Send, Check } from 'lucide-solid';
 import { GENERAL_FIELDS, BINDING_FIELDS, IPV4_FIELDS, IPV6_FIELDS, ADVANCED_FIELDS, resolveSuffix, getChangedParams, validateFields, type WanFieldDef } from '../lib/wanFields';
+import { getWanProfiles, buildExclusiveTieParams } from '../lib/wanProfiles';
 
 interface WanSettingsModalProps {
   wanPath: string;
@@ -112,6 +113,23 @@ const WanSettingsModal: Component<WanSettingsModalProps> = (props) => {
     if (!validate()) return;
     const changed = { ...getChangedParams(props.parameters, prefix, edits()), ...getGenericChanged() };
     if (Object.keys(changed).length === 0) return;
+    const profiles = getWanProfiles(props.parameters);
+    const target = profiles.find(p => p.path === props.wanPath);
+    if (target) {
+      for (const field of BINDING_FIELDS) {
+        const suffix = resolveFieldSuffix(field.suffixes);
+        if (!suffix) continue;
+        const key = prefix + suffix;
+        if (changed[key] !== '1') continue;
+        const lanMatch = suffix.match(/Lan(\d+)Enable$/i);
+        const ssidMatch = suffix.match(/SSID(\d+)Enable$/i);
+        if (lanMatch) {
+          Object.assign(changed, buildExclusiveTieParams(profiles, target, Number(lanMatch[1]), 'lan', true));
+        } else if (ssidMatch) {
+          Object.assign(changed, buildExclusiveTieParams(profiles, target, Number(ssidMatch[1]), 'ssid', true));
+        }
+      }
+    }
     setSaving(true);
     try {
       await api.setParameterValues(props.serial, changed);

@@ -12,7 +12,7 @@ import ColumnFilter from '../components/ColumnFilter';
 import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
-import { getWanProfiles, type WanProfile } from '../lib/wanProfiles';
+import { getWanProfiles, buildExclusiveTieParams, type WanProfile } from '../lib/wanProfiles';
 import { statusBadgeClass } from '../lib/lanFields';
 import { usePageSize } from '../lib/usePageSize';
 import { appName } from '../lib/appName';
@@ -530,25 +530,21 @@ const DeviceDetail: Component = () => {
     const key = `wan-tie-${wan.path}-${kind}${portNumber}`;
     setActionLoading(key);
     try {
-      const params: Record<string, string> = {};
-
-      const boolPath = kind === 'ssid'
-        ? wan.portParams.ssidEnablePaths?.[portNumber]
-        : wan.portParams.lanEnablePaths?.[portNumber];
-      if (boolPath) {
-        params[boolPath] = check ? '1' : '0';
-        await api.setParameterValues(serial(), params);
-        const portLabel = kind === 'lan' ? `L${portNumber}` : `S${portNumber}`;
-        showMessage('success', `WAN tie ${portLabel} ${check ? 'assigned to' : 'removed from'} ${wan.name} task created.`);
-        refetchTasks();
+      const params = buildExclusiveTieParams(wanProfiles(), wan, portNumber, kind, check);
+      if (Object.keys(params).length === 0) {
+        showMessage('error', 'This CPE does not expose a supported WAN port binding parameter.');
         setActionLoading(null);
         return;
       }
-      showMessage('error', 'This CPE does not expose a supported WAN port binding parameter.');
+      await api.setParameterValues(serial(), params);
+      const portLabel = kind === 'lan' ? `L${portNumber}` : `S${portNumber}`;
+      showMessage('success', `WAN tie ${portLabel} ${check ? 'assigned to' : 'removed from'} ${wan.name} task created.`);
+      refetchTasks();
+      setActionLoading(null);
     } catch (err) {
       showMessage('error', 'WAN tie change was not applied. Check the CPE session and retry.', (err as Error).message);
+      setActionLoading(null);
     }
-    setActionLoading(null);
   };
 
   const handleLanEnable = async (index: number, enable: boolean) => {

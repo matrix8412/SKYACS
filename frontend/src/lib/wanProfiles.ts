@@ -121,3 +121,28 @@ export function getWanProfiles(parameters: WanParameter[]): WanProfile[] {
     };
   });
 }
+
+export function buildExclusiveTieParams(
+  profiles: WanProfile[],
+  target: WanProfile,
+  portNumber: number,
+  kind: 'lan' | 'ssid',
+  enable: boolean,
+): Record<string, string> {
+  const params: Record<string, string> = {};
+  const targetPath = kind === 'ssid'
+    ? target.portParams?.ssidEnablePaths?.[portNumber]
+    : target.portParams?.lanEnablePaths?.[portNumber];
+  if (!targetPath) return params;
+  params[targetPath] = enable ? '1' : '0';
+  if (enable) {
+    for (const p of profiles) {
+      if (p.path === target.path) continue;
+      const otherPath = kind === 'ssid'
+        ? p.portParams?.ssidEnablePaths?.[portNumber]
+        : p.portParams?.lanEnablePaths?.[portNumber];
+      if (otherPath) params[otherPath] = '0';
+    }
+  }
+  return params;
+}
