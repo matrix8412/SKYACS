@@ -1,6 +1,6 @@
 import type { Component } from 'solid-js';
 import { createSignal, createResource, createMemo, Show, For } from 'solid-js';
-import { Plus, Edit, Trash2, Activity, Search, X } from 'lucide-solid';
+import { Plus, Edit, Trash2, Activity, Search, X, Copy, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-solid';
 import { api, type MetricDefinition } from '../lib/api';
 import PageHeader from '../components/PageHeader';
 import Dialog from '../components/Dialog';
@@ -42,6 +42,7 @@ const MetricsSettings: Component = () => {
   const [metricForm, setMetricForm] = createSignal<Omit<MetricDefinition, 'id' | 'created_at' | 'updated_at'>>(EMPTY_METRIC);
   const [columnFilters, setColumnFilters] = createSignal<Record<string, ColumnFilterState>>({});
   const [searchQuery, setSearchQuery] = createSignal('');
+  const [sortBy, setSortBy] = createSignal<{ column: string; direction: 'asc' | 'desc' } | null>(null);
   const { columns, isVisible, toggle } = useColumnVisibility('metrics', [
     { id: 'name', label: 'Name', visible: true },
     { id: 'parameter_name', label: 'Parameter', visible: true },
@@ -84,8 +85,31 @@ const MetricsSettings: Component = () => {
     }
     return applyColumnFilters(all, columnFilters(), getFilterValue);
   });
+  const sortedMetrics = createMemo(() => {
+    const all = [...filteredMetrics()];
+    const sort = sortBy();
+    if (!sort) return all;
+    return all.sort((a, b) => {
+      const aVal = getFilterValue(a, sort.column);
+      const bVal = getFilterValue(b, sort.column);
+      const comparison = aVal.localeCompare(bVal);
+      return sort.direction === 'asc' ? comparison : -comparison;
+    });
+  });
+  const handleSort = (columnId: string) => {
+    const current = sortBy();
+    if (current?.column === columnId) {
+      if (current.direction === 'asc') {
+        setSortBy({ column: columnId, direction: 'desc' });
+      } else {
+        setSortBy(null);
+      }
+    } else {
+      setSortBy({ column: columnId, direction: 'asc' });
+    }
+  };
   const pagedMetrics = createMemo(() => {
-    const all = filteredMetrics();
+    const all = sortedMetrics();
     const start = metricPage() * pageSize();
     return all.slice(start, start + pageSize());
   });
@@ -99,6 +123,26 @@ const MetricsSettings: Component = () => {
 
   const openEditMetric = (def: MetricDefinition) => {
     setEditingMetric(def);
+    setMetricForm({
+      name: def.name,
+      description: def.description,
+      device_type_match: def.device_type_match,
+      parameter_name: def.parameter_name,
+      unit: def.unit,
+      source: def.source,
+      active: def.active,
+      group: def.group,
+      color: def.color,
+      axis: def.axis,
+      transform: def.transform,
+      multiplier: def.multiplier,
+      unit_scale: def.unit_scale,
+    });
+    setShowMetricModal(true);
+  };
+
+  const openCopyMetric = (def: MetricDefinition) => {
+    setEditingMetric(null);
     setMetricForm({
       name: def.name,
       description: def.description,
@@ -154,6 +198,29 @@ const MetricsSettings: Component = () => {
       setPendingAction(null);
     }
   };
+
+  const renderSortHeader = (colId: string, label: string, align: 'left' | 'center' = 'left') => (
+    <th class={`${align === 'center' ? 'text-center' : 'text-left'} px-3 py-2.5 font-semibold text-primary`}>
+      <div class={`flex items-center gap-1.5 ${align === 'center' ? 'justify-center' : ''}`}>
+        <button
+          onClick={() => handleSort(colId)}
+          class={`flex items-center gap-1 text-xs font-medium tracking-wide transition-colors ${
+            sortBy()?.column === colId ? 'text-sky-400' : 'text-muted hover:text-primary'
+          } cursor-pointer`}
+        >
+          {label}
+          <Show when={sortBy()?.column === colId}>
+            {sortBy()?.direction === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+          </Show>
+          <Show when={sortBy()?.column !== colId}>
+            <ArrowUpDown size={10} class="opacity-50" />
+          </Show>
+        </button>
+        <ColumnFilter columnId={colId} label={label} active={columnFilters()[colId] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n[colId] = s; else delete n[colId]; return n; }); }} />
+      </div>
+    </th>
+  );
+
   return (
     <div class="space-y-5">
       <PageHeader title="Monitored Metrics" description="Define which CPE parameters to collect as time-series data." />
@@ -192,53 +259,25 @@ const MetricsSettings: Component = () => {
               <thead class="sticky top-0 bg-base z-10">
                 <tr class="border-b-2 border-subtle bg-base">
                   <Show when={isVisible('name')}>
-                    <th class="text-left px-3 py-2.5 font-semibold text-primary">
-                      <div class="flex items-center gap-1.5">Name
-                        <ColumnFilter columnId="name" label="Name" active={columnFilters()['name'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['name'] = s; else delete n['name']; return n; }); }} />
-                      </div>
-                    </th>
+                    {renderSortHeader('name', 'Name')}
                   </Show>
                   <Show when={isVisible('parameter_name')}>
-                    <th class="text-left px-3 py-2.5 font-semibold text-primary">
-                      <div class="flex items-center gap-1.5">Parameter
-                        <ColumnFilter columnId="parameter_name" label="Parameter" active={columnFilters()['parameter_name'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['parameter_name'] = s; else delete n['parameter_name']; return n; }); }} />
-                      </div>
-                    </th>
+                    {renderSortHeader('parameter_name', 'Parameter')}
                   </Show>
                   <Show when={isVisible('device_type_match')}>
-                    <th class="text-left px-3 py-2.5 font-semibold text-primary">
-                      <div class="flex items-center gap-1.5">Device Match
-                        <ColumnFilter columnId="device_type_match" label="Device Match" active={columnFilters()['device_type_match'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['device_type_match'] = s; else delete n['device_type_match']; return n; }); }} />
-                      </div>
-                    </th>
+                    {renderSortHeader('device_type_match', 'Device Match')}
                   </Show>
                   <Show when={isVisible('source')}>
-                    <th class="text-left px-3 py-2.5 font-semibold text-primary">
-                      <div class="flex items-center gap-1.5">Source
-                        <ColumnFilter columnId="source" label="Source" active={columnFilters()['source'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['source'] = s; else delete n['source']; return n; }); }} />
-                      </div>
-                    </th>
+                    {renderSortHeader('source', 'Source')}
                   </Show>
                   <Show when={isVisible('unit')}>
-                    <th class="text-left px-3 py-2.5 font-semibold text-primary">
-                      <div class="flex items-center gap-1.5">Unit
-                        <ColumnFilter columnId="unit" label="Unit" active={columnFilters()['unit'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['unit'] = s; else delete n['unit']; return n; }); }} />
-                      </div>
-                    </th>
+                    {renderSortHeader('unit', 'Unit')}
                   </Show>
                   <Show when={isVisible('group')}>
-                    <th class="text-left px-3 py-2.5 font-semibold text-primary">
-                      <div class="flex items-center gap-1.5">Group
-                        <ColumnFilter columnId="group" label="Group" active={columnFilters()['group'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['group'] = s; else delete n['group']; return n; }); }} />
-                      </div>
-                    </th>
+                    {renderSortHeader('group', 'Group')}
                   </Show>
                   <Show when={isVisible('active')}>
-                    <th class="text-center px-3 py-2.5 font-semibold text-primary">
-                      <div class="flex items-center gap-1.5">Active
-                        <ColumnFilter columnId="active" label="Active" active={columnFilters()['active'] || null} onApply={(s) => { setColumnFilters((prev) => { const n = { ...prev }; if (s) n['active'] = s; else delete n['active']; return n; }); }} />
-                      </div>
-                    </th>
+                    {renderSortHeader('active', 'Active', 'center')}
                   </Show>
                   <Show when={isFullAccess()}>
                     <th class="text-right px-3 py-2.5 font-semibold text-primary"></th>
@@ -284,6 +323,9 @@ const MetricsSettings: Component = () => {
                           <div class="flex justify-end gap-1">
                             <button onClick={() => openEditMetric(def)} class="btn btn-ghost text-xs" title="Edit">
                               <Edit size={12} />
+                            </button>
+                            <button onClick={() => openCopyMetric(def)} class="btn btn-ghost text-xs" title="Copy">
+                              <Copy size={12} />
                             </button>
                             <button onClick={() => handleDeleteMetric(def)} class="btn btn-ghost text-xs text-red-400" title="Delete">
                               <Trash2 size={12} />

@@ -1,5 +1,5 @@
 import type { Component } from 'solid-js';
-import { createSignal, createResource, createEffect, createMemo, onCleanup, Show } from 'solid-js';
+import { createSignal, createResource, createEffect, createMemo, onCleanup, Show, For } from 'solid-js';
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { api, type MetricDefinition } from '../lib/api';
@@ -80,6 +80,8 @@ const effectiveUnit = (unit: string, scaleMode: string, suffix: string): string 
   return unit;
 };
 
+const fmtVal = (v: number | null): string => (v == null ? '—' : v.toFixed(2));
+
 const MetricChart: Component<MetricChartProps> = (props) => {
   const [bucket, setBucket] = createSignal(getStoredBucket(props.serial));
   const [chartEl, setChartEl] = createSignal<HTMLElement>();
@@ -155,6 +157,32 @@ const MetricChart: Component<MetricChartProps> = (props) => {
     const group = props.metrics[0].group;
     if (group) return group;
     return props.metrics.map((m) => m.name).join(' / ');
+  });
+
+  const legendStats = createMemo(() => {
+    const results = data();
+    if (!results) return null;
+    return results.map((r, i) => {
+      const m = props.metrics[i];
+      const color = m.color || DEFAULT_PALETTE[i % DEFAULT_PALETTE.length];
+      const values = r.aggregates?.map((a) => a.avg) ?? r.samples?.map((s) => s.value) ?? [];
+      const scale = m.unit_scale ? computeUnitScale(values, m.unit_scale) : { divisor: 1, suffix: '' };
+      const unit = effectiveUnit(m.unit, m.unit_scale, scale.suffix);
+      let min: number | null = null;
+      let max: number | null = null;
+      let avg: number | null = null;
+      if (r.aggregates && r.aggregates.length > 0) {
+        min = Math.min(...r.aggregates.map((a) => a.min)) / scale.divisor;
+        max = Math.max(...r.aggregates.map((a) => a.max)) / scale.divisor;
+        avg = r.aggregates.reduce((s, a) => s + a.avg, 0) / r.aggregates.length / scale.divisor;
+      } else if (r.samples && r.samples.length > 0) {
+        const vals = r.samples.map((s) => s.value);
+        min = Math.min(...vals) / scale.divisor;
+        max = Math.max(...vals) / scale.divisor;
+        avg = vals.reduce((s, v) => s + v, 0) / vals.length / scale.divisor;
+      }
+      return { name: m.name, color, unit, min, avg, max };
+    });
   });
 
   const renderChart = (showPoints: boolean) => {
@@ -364,6 +392,21 @@ const MetricChart: Component<MetricChartProps> = (props) => {
       </Show>
       <Show when={!data.loading && !data.error && seriesData()}>
         <div ref={setChartEl} class="w-full h-[200px] relative overflow-hidden" />
+        <Show when={legendStats()}>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 pt-1">
+            <For each={legendStats()!}>
+              {(s) => (
+                <div class="flex items-center gap-1.5">
+                  <span class="w-2.5 h-2.5 rounded-[2px] inline-block" style={{ background: s.color }} />
+                  <span class="text-xs text-secondary">{s.name}</span>
+                  <span class="text-[10px] text-muted font-mono">
+                    min {fmtVal(s.min)} · avg {fmtVal(s.avg)} · max {fmtVal(s.max)}{s.unit ? ` ${s.unit}` : ''}
+                  </span>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
       </Show>
       <Show when={!data.loading && !data.error && !seriesData()}>
         <div class="text-xs text-muted h-[200px] flex flex-col items-center justify-center gap-1">

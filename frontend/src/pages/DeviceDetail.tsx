@@ -2173,14 +2173,14 @@ const DeviceDetail: Component = () => {
               <div class="p-5 border-b border-subtle flex items-center justify-between gap-4">
                 <div class="flex items-center gap-3">
                   <h2 class="text-sm font-medium text-secondary">All Parameters ({filteredParams().length})</h2>
-                  <div><label for="parameter-filter" class="block text-[10px] text-muted mb-1">Filter parameter tree</label><input
+                  <input
                     id="parameter-filter"
                     type="search"
                     value={paramFilter()}
                     onInput={(e) => setParamFilter(e.currentTarget.value)}
-                    placeholder="Parameter path"
-                    class="input w-64 py-1.5 text-sm"
-                  /></div>
+                    placeholder="Filter parameter path…"
+                    class="input w-96 py-1.5 text-sm"
+                  />
                 </div>
                 <div class="flex items-center gap-2">
                   <button
