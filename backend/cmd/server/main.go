@@ -354,10 +354,6 @@ func runAutoMigrate(db *gorm.DB) error {
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_metric_name_match ON metric_definitions (name, device_type_match)").Error; err != nil {
 		return fmt.Errorf("create composite metric name index: %w", err)
 	}
-	// Backfill product_classes from legacy product_class column.
-	if err := db.Exec(`UPDATE provisioning_rules SET product_classes = to_jsonb(ARRAY[LOWER(product_class)]) WHERE product_class <> '' AND (product_classes IS NULL OR jsonb_array_length(product_classes) = 0)`).Error; err != nil {
-		return fmt.Errorf("backfill product_classes: %w", err)
-	}
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_command_key_unique ON tasks (command_key) WHERE command_key <> ''").Error; err != nil {
 		return fmt.Errorf("create unique task command key index: %w", err)
 	}
