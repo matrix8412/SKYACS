@@ -1,6 +1,6 @@
-import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For, type Component } from 'solid-js';
-import { Copy, Edit2, GripVertical, MoreVertical, Plus, Search, Settings as SettingsIcon, Trash2, X, ChevronLeft } from 'lucide-solid';
-import { api, type ProvisioningRule, type ProvisioningTemplate } from '../lib/api';
+import { createSignal, createEffect, createMemo, createResource, onMount, onCleanup, Show, For, type Component } from 'solid-js';
+import { Activity, Copy, Edit, Edit2, GripVertical, MoreVertical, Plus, Search, Settings as SettingsIcon, Trash2, X, ChevronLeft } from 'lucide-solid';
+import { api, type MetricDefinition, type ProvisioningRule, type ProvisioningTemplate } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFeedback } from '../components/Feedback';
 import Dialog from '../components/Dialog';
@@ -11,6 +11,7 @@ import ColumnVisibility from '../components/ColumnVisibility';
 import Pagination from '../components/Pagination';
 import { applyColumnFilters, type ColumnFilterState } from '../lib/filters';
 import { usePageSize } from '../lib/usePageSize';
+import MetricModal from '../components/MetricModal';
 
 interface ProvColumnConfig {
   id: string;
@@ -54,6 +55,10 @@ const Provisioning: Component = () => {
   const [showTemplateModal, setShowTemplateModal] = createSignal(false);
   const [editingTemplate, setEditingTemplate] = createSignal<ProvisioningTemplate | null>(null);
   const [templateForm, setTemplateForm] = createSignal({ name: '', manufacturer: '', product_class: '', description: '' });
+  const [templateTab, setTemplateTab] = createSignal<'rules' | 'metrics'>('rules');
+  const [metrics, { refetch: refetchMetrics }] = createResource(api.getMetricDefinitions);
+  const [editingMetric, setEditingMetric] = createSignal<MetricDefinition | null>(null);
+  const [showMetricModal, setShowMetricModal] = createSignal(false);
 
   const provisioningPayload = (form: typeof emptyProvisioningRule) => {
     const base = isAddObjectRule()
@@ -372,6 +377,42 @@ const Provisioning: Component = () => {
     finally { setPendingAction(null); }
   };
 
+  // Metrics tab: filter metrics matching the selected template's device type
+  const templateMetrics = createMemo(() => {
+    const all = metrics() || [];
+    const t = selectedTemplate();
+    if (!t) return [];
+    const deviceType = `${t.manufacturer || ''}/${t.product_class || ''}`;
+    return all.filter((def) => {
+      if (def.device_type_match === '' || def.device_type_match === '*') return true;
+      const pattern = def.device_type_match.replace(/\*/g, '.*');
+      return new RegExp(`^${pattern}$`).test(deviceType);
+    });
+  });
+
+  const openCreateMetric = () => {
+    setEditingMetric(null);
+    setShowMetricModal(true);
+  };
+
+  const openEditMetric = (def: MetricDefinition) => {
+    setEditingMetric(def);
+    setShowMetricModal(true);
+  };
+
+  const handleDeleteMetric = async (def: MetricDefinition) => {
+    if (!await confirm({ title: `Delete metric "${def.name}"?`, description: 'Historical samples remain but will no longer be collected.', confirmLabel: 'Delete metric', tone: 'danger' })) return;
+    if (pendingAction()) return;
+    setPendingAction(`delete-metric-${def.id}`);
+    try {
+      await api.deleteMetricDefinition(def.id);
+      notify({ tone: 'success', title: 'Metric deleted', message: `"${def.name}" has been removed.` });
+      refetchMetrics();
+    } catch (error) {
+      notify({ tone: 'error', title: 'Could not delete metric', message: 'The metric remains active.', detail: (error as Error).message, persistent: true });
+    } finally { setPendingAction(null); }
+  };
+
   return (
     <div class="page">
       <PageHeader
@@ -463,25 +504,40 @@ const Provisioning: Component = () => {
                     {selectedTemplate()!.manufacturer || selectedTemplate()!.product_class
                       ? [selectedTemplate()!.manufacturer, selectedTemplate()!.product_class].filter(Boolean).join(' / ')
                       : 'Global (all devices)'}
-                    {' · '}Rules are evaluated in order.
                   </p>
                 </div>
               </div>
               <div class="flex items-center gap-2">
-                <div class="relative">
-                  <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-                  <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search rules…" class="input pl-9! w-56 text-sm" />
-                  <Show when={searchQuery()}>
-                    <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
-                  </Show>
-                </div>
-                <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
-                  <Plus size={12} />
-                  Add rule
-                </button>
+                <Show when={templateTab() === 'rules'}>
+                  <div class="relative">
+                    <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                    <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search rules…" class="input pl-9! w-56 text-sm" />
+                    <Show when={searchQuery()}>
+                      <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                    </Show>
+                  </div>
+                  <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
+                    <Plus size={12} />
+                    Add rule
+                  </button>
+                </Show>
+                <Show when={templateTab() === 'metrics'}>
+                  <button onClick={openCreateMetric} class="btn btn-primary text-xs py-1.5">
+                    <Plus size={12} />
+                    Add metric
+                  </button>
+                </Show>
               </div>
             </div>
 
+            <div class="flex gap-1 border-b border-subtle mb-4">
+              <button type="button" onClick={() => setTemplateTab('rules')} class={`px-3 py-1.5 rounded-t text-xs font-medium transition-colors ${templateTab() === 'rules' ? 'bg-sky-500/20 text-sky-300' : 'text-muted hover:text-primary'}`}>Rules</button>
+              <button type="button" onClick={() => setTemplateTab('metrics')} class={`px-3 py-1.5 rounded-t text-xs font-medium transition-colors ${templateTab() === 'metrics' ? 'bg-sky-500/20 text-sky-300' : 'text-muted hover:text-primary'}`}>
+                <span class="flex items-center gap-1.5"><Activity size={12} />Metrics</span>
+              </button>
+            </div>
+
+          <Show when={templateTab() === 'rules'}>
           <Show when={provError()}>
             <ResourceError title="Provisioning rules are unavailable" description="The current provisioning policy could not be loaded. Retry before changing a device rollout." onRetry={loadProvRules} />
           </Show>
@@ -596,6 +652,70 @@ const Provisioning: Component = () => {
 
           <Show when={!provError() && provRules() !== null && (provRules()?.length ?? 0) === 0}>
             <EmptyState compact title="No provisioning rules exist" description="Add a rule to this template to start provisioning." action={<button type="button" class="btn btn-primary" onClick={openCreateProv}>Add rule</button>} />
+          </Show>
+          </Show>
+
+          <Show when={templateTab() === 'metrics'}>
+            <Show when={metrics() !== undefined}>
+              <div class="overflow-x-auto table-scroll">
+                <table class="w-full text-left">
+                  <thead>
+                    <tr class="border-b border-subtle">
+                      <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">Name</th>
+                      <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">Parameter</th>
+                      <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">Device Match</th>
+                      <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">Source</th>
+                      <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">Unit</th>
+                      <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">Group</th>
+                      <th class="py-2 pr-4 text-xs font-medium text-muted uppercase tracking-wide">Active</th>
+                      <th class="py-2 text-right text-xs font-medium text-muted uppercase tracking-wide">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <For each={templateMetrics()}>
+                      {(def) => (
+                        <tr class="border-t border-subtle hover:bg-elevated/30 transition-colors">
+                          <td class="px-3 py-2.5 text-primary font-medium">
+                            {def.name}
+                            <Show when={def.description}>
+                              <div class="text-[10px] text-muted mt-0.5">{def.description}</div>
+                            </Show>
+                          </td>
+                          <td class="px-3 py-2.5 text-secondary font-mono text-xs">{def.parameter_name}</td>
+                          <td class="px-3 py-2.5 text-secondary font-mono text-xs">{def.device_type_match}</td>
+                          <td class="px-3 py-2.5">
+                            <span class={`badge ${def.source === 'active' ? 'badge-warning' : def.source === 'universal' ? 'badge-success' : ''}`}>{def.source}</span>
+                          </td>
+                          <td class="px-3 py-2.5 text-secondary">{def.unit || '—'}</td>
+                          <td class="px-3 py-2.5 text-secondary">
+                            <div class="flex items-center gap-1.5">
+                              <span class="w-2.5 h-2.5 rounded-[2px] inline-block" style={{ background: def.color || '#475569' }} />
+                              <span class="text-xs">{def.group || '—'}</span>
+                            </div>
+                          </td>
+                          <td class="px-3 py-2.5 text-center">
+                            <span class={`badge ${def.active ? 'badge-success' : 'badge-muted'}`}>{def.active ? 'Yes' : 'No'}</span>
+                          </td>
+                          <td class="px-3 py-2.5 text-right">
+                            <div class="flex justify-end gap-1">
+                              <button onClick={() => openEditMetric(def)} class="btn btn-ghost text-xs" title="Edit">
+                                <Edit size={12} />
+                              </button>
+                              <button onClick={() => handleDeleteMetric(def)} class="btn btn-ghost text-xs text-red-400" title="Delete">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </For>
+                  </tbody>
+                </table>
+              </div>
+              <Show when={(templateMetrics()?.length ?? 0) === 0}>
+                <EmptyState compact title="No metrics match this template" description="Add a metric to start collecting time-series data for this device type." action={<button type="button" class="btn btn-primary" onClick={openCreateMetric}>Add metric</button>} />
+              </Show>
+            </Show>
           </Show>
           </div>
         </Show>
@@ -762,6 +882,14 @@ const Provisioning: Component = () => {
           </form>
         </Dialog>
       </Show>
+
+      {/* Metric Modal */}
+      <MetricModal
+        open={showMetricModal()}
+        editingMetric={editingMetric()}
+        onClose={() => setShowMetricModal(false)}
+        onSaved={() => refetchMetrics()}
+      />
     </div>
   );
 };
