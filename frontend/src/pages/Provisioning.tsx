@@ -1,6 +1,6 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For, type Component } from 'solid-js';
-import { Copy, Edit2, GripVertical, MoreVertical, Plus, Search, Settings as SettingsIcon, Trash2, X } from 'lucide-solid';
-import { api, type ProvisioningRule } from '../lib/api';
+import { Copy, Edit2, GripVertical, MoreVertical, Plus, Search, Settings as SettingsIcon, Trash2, X, ChevronLeft } from 'lucide-solid';
+import { api, type ProvisioningRule, type ProvisioningTemplate } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useFeedback } from '../components/Feedback';
 import Dialog from '../components/Dialog';
@@ -23,11 +23,9 @@ const defaultProvColumns: ProvColumnConfig[] = [
   { id: 'parameter', label: 'CWMP path', visible: true, order: 0 },
   { id: 'value', label: 'Value', visible: true, order: 1 },
   { id: 'parameter_type', label: 'Value type', visible: true, order: 2 },
-  { id: 'manufacturer', label: 'Manufacturer', visible: true, order: 3 },
-  { id: 'product_class', label: 'Product Class', visible: true, order: 4 },
-  { id: 'tag', label: 'Tag', visible: true, order: 5 },
-  { id: 'phase', label: 'Phase', visible: true, order: 6 },
-  { id: 'status', label: 'Status', visible: true, order: 7 },
+  { id: 'tags', label: 'Tags', visible: true, order: 3 },
+  { id: 'phase', label: 'Phase', visible: true, order: 4 },
+  { id: 'status', label: 'Status', visible: true, order: 5 },
 ];
 
 const PROV_STORAGE_KEY = 'skyacs-prov-columns';
@@ -37,6 +35,8 @@ const Provisioning: Component = () => {
   const { notify, confirm } = useFeedback();
 
   const [provRules, setProvRules] = createSignal<Awaited<ReturnType<typeof api.getProvisioningRules>> | null>(null);
+  const [provTemplates, setProvTemplates] = createSignal<ProvisioningTemplate[] | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = createSignal<ProvisioningTemplate | null>(null);
   const [provError, setProvError] = createSignal<Error | null>(null);
   const [pendingAction, setPendingAction] = createSignal<string | null>(null);
   const [showSettingsMenu, setShowSettingsMenu] = createSignal(false);
@@ -47,19 +47,18 @@ const Provisioning: Component = () => {
   let settingsMenu: HTMLDivElement | undefined;
   const [showProvModal, setShowProvModal] = createSignal(false);
   const [editingProv, setEditingProv] = createSignal<ProvisioningRule | null>(null);
-  const emptyProvisioningRule = { parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', manufacturer: '', product_class: '', product_classes: [] as string[], tag: '', enabled: true, description: '', add_object_path: '', order: 0, condition: '' };
+  const emptyProvisioningRule = { template_id: 0, parameter_name: '', parameter_value: '', parameter_type: 'string', phase: 'bootstrap', tags: [] as string[], enabled: true, description: '', add_object_path: '', order: 0, condition: '' };
   const [provForm, setProvForm] = createSignal({ ...emptyProvisioningRule });
   const [isAddObjectRule, setIsAddObjectRule] = createSignal(false);
   const [copyingProv, setCopyingProv] = createSignal(false);
+  const [showTemplateModal, setShowTemplateModal] = createSignal(false);
+  const [editingTemplate, setEditingTemplate] = createSignal<ProvisioningTemplate | null>(null);
+  const [templateForm, setTemplateForm] = createSignal({ name: '', manufacturer: '', product_class: '', description: '' });
 
   const provisioningPayload = (form: typeof emptyProvisioningRule) => {
     const base = isAddObjectRule()
       ? { ...form, parameter_name: '', parameter_value: '', parameter_type: 'string', add_object_path: form.parameter_name.trim() }
       : { ...form, add_object_path: '' };
-    // If product_classes is populated, clear the legacy single product_class field
-    if (base.product_classes.length > 0) {
-      base.product_class = '';
-    }
     return base;
   };
 
@@ -80,9 +79,7 @@ const Provisioning: Component = () => {
       case 'parameter': return rule.add_object_path || rule.parameter_name || '';
       case 'value': return rule.add_object_path ? '' : rule.parameter_value || '';
       case 'parameter_type': return rule.parameter_type || '';
-      case 'manufacturer': return rule.manufacturer || '';
-      case 'product_class': return (rule.product_classes && rule.product_classes.length > 0) ? rule.product_classes.join(', ') : (rule.product_class || '');
-      case 'tag': return rule.tag || '';
+      case 'tags': return (rule.tags || []).join(', ');
       case 'phase': return rule.phase || '';
       case 'status': return rule.enabled ? 'Active' : 'Disabled';
       default: return '';
@@ -97,10 +94,7 @@ const Provisioning: Component = () => {
         r.parameter_name?.toLowerCase().includes(query) ||
         r.parameter_value?.toLowerCase().includes(query) ||
         r.parameter_type?.toLowerCase().includes(query) ||
-        r.manufacturer?.toLowerCase().includes(query) ||
-        r.product_class?.toLowerCase().includes(query) ||
-        (r.product_classes || []).some(pc => pc.toLowerCase().includes(query)) ||
-        r.tag?.toLowerCase().includes(query) ||
+        (r.tags || []).some(t => t.toLowerCase().includes(query)) ||
         r.phase?.toLowerCase().includes(query) ||
         r.description?.toLowerCase().includes(query) ||
         r.add_object_path?.toLowerCase().includes(query)
@@ -120,7 +114,7 @@ const Provisioning: Component = () => {
   const provDragEnabled = createMemo(() => Object.keys(columnFilters()).length === 0);
 
   onMount(() => {
-    loadProvRules();
+    loadProvTemplates();
     const closeMenu = (event: MouseEvent) => {
       if (!settingsMenu?.contains(event.target as Node)) setShowSettingsMenu(false);
     };
@@ -134,6 +128,42 @@ const Provisioning: Component = () => {
       document.removeEventListener('keydown', closeOnEscape);
     });
   });
+
+  const loadProvTemplates = async () => {
+    try {
+      const templates = await api.getProvisioningTemplates();
+      setProvTemplates(templates);
+    } catch (error) {
+      setProvError(error as Error);
+    }
+  };
+
+  const loadProvRules = async () => {
+    const templateId = selectedTemplate()?.id;
+    try {
+      const rules = await api.getProvisioningRules(templateId);
+      setProvRules(rules);
+    } catch (error) {
+      setProvError(error as Error);
+    }
+  };
+
+  const refetchProvRules = async () => {
+    await loadProvRules();
+  };
+
+  const selectTemplate = (template: ProvisioningTemplate) => {
+    setSelectedTemplate(template);
+    setProvRules(null);
+    setProvError(null);
+    loadProvRules();
+  };
+
+  const backToTemplates = () => {
+    setSelectedTemplate(null);
+    setProvRules(null);
+    setProvError(null);
+  };
 
   const openRefreshSettings = async () => {
     setShowSettingsMenu(false);
@@ -205,7 +235,7 @@ const Provisioning: Component = () => {
     reordered.splice(targetIdx, 0, moved);
     setProvRules(reordered.map((r, i) => ({ ...r, order: i })));
     try {
-      await api.reorderProvisioningRules(reordered.map(r => r.id));
+      await api.reorderProvisioningRules(selectedTemplate()!.id, reordered.map(r => r.id));
       notify({ tone: 'success', title: 'Rules reordered' });
     } catch (error) {
       notify({ tone: 'error', title: 'Reorder failed', detail: (error as Error).message, persistent: true });
@@ -284,7 +314,7 @@ const Provisioning: Component = () => {
     setEditingProv(p);
     setCopyingProv(false);
     setIsAddObjectRule(Boolean(p.add_object_path));
-    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', product_classes: p.product_classes || [], tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
+    setProvForm({ template_id: p.template_id, parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', tags: p.tags || [], enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
     setShowProvModal(true);
   };
 
@@ -292,7 +322,7 @@ const Provisioning: Component = () => {
     setEditingProv(null);
     setCopyingProv(false);
     setIsAddObjectRule(false);
-    setProvForm({ ...emptyProvisioningRule });
+    setProvForm({ ...emptyProvisioningRule, template_id: selectedTemplate()?.id || 0 });
     setShowProvModal(true);
   };
 
@@ -300,8 +330,58 @@ const Provisioning: Component = () => {
     setEditingProv(null);
     setCopyingProv(true);
     setIsAddObjectRule(Boolean(p.add_object_path));
-    setProvForm({ parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', manufacturer: p.manufacturer || '', product_class: p.product_class || '', product_classes: p.product_classes || [], tag: p.tag || '', enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
+    setProvForm({ template_id: p.template_id, parameter_name: p.add_object_path || p.parameter_name, parameter_value: p.parameter_value, parameter_type: p.parameter_type, phase: p.phase || 'bootstrap', tags: p.tags || [], enabled: p.enabled, description: p.description, add_object_path: p.add_object_path || '', order: p.order, condition: p.condition || '' });
     setShowProvModal(true);
+  };
+
+  const openCreateTemplate = () => {
+    setEditingTemplate(null);
+    setTemplateForm({ name: '', manufacturer: '', product_class: '', description: '' });
+    setShowTemplateModal(true);
+  };
+
+  const openEditTemplate = (t: ProvisioningTemplate) => {
+    setEditingTemplate(t);
+    setTemplateForm({ name: t.name, manufacturer: t.manufacturer || '', product_class: t.product_class || '', description: t.description || '' });
+    setShowTemplateModal(true);
+  };
+
+  const handleCreateTemplate = async () => {
+    if (pendingAction()) return;
+    const form = templateForm();
+    if (!form.name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Template name is required.' }); return; }
+    setPendingAction('create-template');
+    try {
+      await api.createProvisioningTemplate({ name: form.name.trim(), manufacturer: form.manufacturer.trim(), product_class: form.product_class.trim(), description: form.description.trim() });
+      notify({ tone: 'success', title: 'Template created', message: form.name.trim() });
+      setShowTemplateModal(false);
+      await loadProvTemplates();
+    } catch (error) { notify({ tone: 'error', title: 'Could not create template', message: 'No template was added.', detail: (error as Error).message, persistent: true }); }
+    finally { setPendingAction(null); }
+  };
+
+  const handleUpdateTemplate = async () => {
+    const t = editingTemplate();
+    if (!t || pendingAction()) return;
+    const form = templateForm();
+    if (!form.name.trim()) { notify({ tone: 'error', title: 'Missing field', message: 'Template name is required.' }); return; }
+    setPendingAction('update-template');
+    try {
+      await api.updateProvisioningTemplate(t.id, { name: form.name.trim(), manufacturer: form.manufacturer.trim(), product_class: form.product_class.trim(), description: form.description.trim() });
+      notify({ tone: 'success', title: 'Template updated', message: form.name.trim() });
+      setShowTemplateModal(false);
+      await loadProvTemplates();
+    } catch (error) { notify({ tone: 'error', title: 'Could not update template', message: 'The template remains unchanged.', detail: (error as Error).message, persistent: true }); }
+    finally { setPendingAction(null); }
+  };
+
+  const handleDeleteTemplate = async (id: number) => {
+    if (!await confirm({ title: 'Delete provisioning template?', description: 'All rules in this template will be permanently deleted.', confirmLabel: 'Delete template', tone: 'danger' })) return;
+    if (pendingAction()) return;
+    setPendingAction(`delete-template-${id}`);
+    try { await api.deleteProvisioningTemplate(id); notify({ tone: 'success', title: 'Template deleted' }); await loadProvTemplates(); if (selectedTemplate()?.id === id) backToTemplates(); }
+    catch (error) { notify({ tone: 'error', title: 'Could not delete template', message: 'The template remains active.', detail: (error as Error).message, persistent: true }); }
+    finally { setPendingAction(null); }
   };
 
   return (
@@ -325,29 +405,94 @@ const Provisioning: Component = () => {
       </PageHeader>
 
       <Show when={isFullAccess()}>
-        <div class="card p-5">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
-                <SettingsIcon size={14} />
-                Provisioning Rules
-              </h2>
-              <p class="text-muted text-xs mt-1">Rules are evaluated in order. The first matching rule wins for a given parameter.</p>
-            </div>
-            <div class="flex items-center gap-2">
-              <div class="relative">
-                <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-                <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search rules…" class="input pl-9! w-56 text-sm" />
-                <Show when={searchQuery()}>
-                  <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
-                </Show>
+        <Show when={!selectedTemplate()}>
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
+                  <SettingsIcon size={14} />
+                  Provisioning Templates
+                </h2>
+                <p class="text-muted text-xs mt-1">Select a template to view and manage its rules. The most specific template matching a device wins.</p>
               </div>
-              <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
+              <button onClick={openCreateTemplate} class="btn btn-primary text-xs py-1.5">
                 <Plus size={12} />
-                Add rule
+                Add template
               </button>
             </div>
+            <Show when={provError()}>
+              <ResourceError title="Templates are unavailable" description="The provisioning templates could not be loaded." onRetry={loadProvTemplates} />
+            </Show>
+            <Show when={!provError() && provTemplates() !== null}>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <For each={provTemplates()}>
+                  {(t) => (
+                    <div class="rounded border border-subtle p-4 hover:border-primary/30 transition-colors cursor-pointer" onClick={() => selectTemplate(t)}>
+                      <div class="flex items-start justify-between">
+                        <div class="min-w-0">
+                          <h3 class="text-sm font-medium text-primary truncate">{t.name}</h3>
+                          <p class="text-xs text-muted mt-1">
+                            {t.manufacturer || t.product_class
+                              ? [t.manufacturer, t.product_class].filter(Boolean).join(' / ')
+                              : 'Global (all devices)'}
+                          </p>
+                          <Show when={t.description}>
+                            <p class="text-xs text-muted mt-1 truncate">{t.description}</p>
+                          </Show>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0 ml-2">
+                          <button onClick={(e) => { e.stopPropagation(); openEditTemplate(t); }} class="icon-button" aria-label={`Edit template ${t.name}`}>
+                            <Edit2 size={13} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(t.id); }} class="icon-button" aria-label={`Delete template ${t.name}`}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </For>
+              </div>
+              <Show when={(provTemplates()?.length ?? 0) === 0}>
+                <EmptyState compact title="No templates exist" description="Create a template to start provisioning rules for a device type." action={<button type="button" class="btn btn-primary" onClick={openCreateTemplate}>Add template</button>} />
+              </Show>
+            </Show>
           </div>
+        </Show>
+        <Show when={selectedTemplate()}>
+          <div class="card p-5">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <button onClick={backToTemplates} class="icon-button" aria-label="Back to templates">
+                  <ChevronLeft size={16} />
+                </button>
+                <div>
+                  <h2 class="text-sm font-medium text-secondary flex items-center gap-2">
+                    <SettingsIcon size={14} />
+                    {selectedTemplate()!.name}
+                  </h2>
+                  <p class="text-muted text-xs mt-1">
+                    {selectedTemplate()!.manufacturer || selectedTemplate()!.product_class
+                      ? [selectedTemplate()!.manufacturer, selectedTemplate()!.product_class].filter(Boolean).join(' / ')
+                      : 'Global (all devices)'}
+                    {' · '}Rules are evaluated in order.
+                  </p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="relative">
+                  <Search size={14} class="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+                  <input type="text" value={searchQuery()} onInput={(e) => setSearchQuery(e.currentTarget.value)} placeholder="Search rules…" class="input pl-9! w-56 text-sm" />
+                  <Show when={searchQuery()}>
+                    <button onClick={() => setSearchQuery('')} class="input-clear" aria-label="Clear search"><X size={12} /></button>
+                  </Show>
+                </div>
+                <button onClick={openCreateProv} class="btn btn-primary text-xs py-1.5">
+                  <Plus size={12} />
+                  Add rule
+                </button>
+              </div>
+            </div>
 
           <Show when={provError()}>
             <ResourceError title="Provisioning rules are unavailable" description="The current provisioning policy could not be loaded. Retry before changing a device rollout." onRetry={loadProvRules} />
@@ -408,22 +553,16 @@ const Provisioning: Component = () => {
                         <Show when={visibleProvColumns().some(c => c.id === 'parameter_type')}>
                           <td class="py-2 text-secondary text-xs">{p.add_object_path ? '—' : (p.parameter_type || '—')}</td>
                         </Show>
-                        <Show when={visibleProvColumns().some(c => c.id === 'manufacturer')}>
-                          <td class="py-2 text-secondary text-xs">{p.manufacturer || '—'}</td>
-                        </Show>
-                        <Show when={visibleProvColumns().some(c => c.id === 'product_class')}>
+                        <Show when={visibleProvColumns().some(c => c.id === 'tags')}>
                           <td class="py-2 text-secondary text-xs">
-                            {(p.product_classes && p.product_classes.length > 0) ? (
+                            {(p.tags && p.tags.length > 0) ? (
                               <span class="flex flex-wrap gap-1">
-                                <For each={p.product_classes}>
-                                  {(pc) => <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400">{pc}</span>}
+                                <For each={p.tags}>
+                                  {(tag) => <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400">{tag}</span>}
                                 </For>
                               </span>
-                            ) : (p.product_class || '—')}
+                            ) : '—'}
                           </td>
-                        </Show>
-                        <Show when={visibleProvColumns().some(c => c.id === 'tag')}>
-                          <td class="py-2 text-secondary text-xs">{p.tag ? <span class="inline-flex items-center text-xs px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400">{p.tag}</span> : '—'}</td>
                         </Show>
                         <Show when={visibleProvColumns().some(c => c.id === 'phase')}>
                           <td class="py-2">
@@ -468,9 +607,10 @@ const Provisioning: Component = () => {
           </Show>
 
           <Show when={!provError() && provRules() !== null && (provRules()?.length ?? 0) === 0}>
-            <EmptyState compact title="No provisioning rules exist" description="Add a scoped rule only when a parameter must be applied automatically to matching CPEs." action={<button type="button" class="btn btn-primary" onClick={openCreateProv}>Add provisioning rule</button>} />
+            <EmptyState compact title="No provisioning rules exist" description="Add a rule to this template to start provisioning." action={<button type="button" class="btn btn-primary" onClick={openCreateProv}>Add rule</button>} />
           </Show>
-        </div>
+          </div>
+        </Show>
       </Show>
 
       {/* Provisioning Modal */}
@@ -524,49 +664,13 @@ const Provisioning: Component = () => {
               <p class="text-xs text-muted mt-1">Lower values execute first. Use drag-and-drop in the table or set explicit order here.</p>
             </div>
             <div>
-              <label for="provisioning-manufacturer" class="block text-xs text-muted mb-1.5">Manufacturer (optional)</label>
-              <input id="provisioning-manufacturer" type="text" value={provForm().manufacturer} onInput={(e) => setProvForm(f => ({ ...f, manufacturer: e.currentTarget.value }))} class="input w-full" placeholder="Leave empty to match all" />
-            </div>
-            <div>
-              <label class="block text-xs text-muted mb-1.5">Product classes (optional)</label>
+              <label class="block text-xs text-muted mb-1.5">Tags (optional)</label>
               <div class="flex flex-wrap gap-1.5 mb-1.5">
-                <For each={provForm().product_classes}>
-                  {(pc) => (
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-300 text-xs">
-                      {pc}
-                      <button type="button" class="hover:text-sky-100" onClick={() => setProvForm(f => ({ ...f, product_classes: f.product_classes.filter(x => x !== pc) }))} aria-label={`Remove ${pc}`}>
-                        <X size={10} />
-                      </button>
-                    </span>
-                  )}
-                </For>
-              </div>
-              <input
-                type="text"
-                class="input w-full"
-                placeholder="Type a product class and press Enter"
-                value={provForm().product_class}
-                onInput={(e) => setProvForm(f => ({ ...f, product_class: e.currentTarget.value }))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ',') {
-                    e.preventDefault();
-                    const val = provForm().product_class.trim().toLowerCase();
-                    if (val && !provForm().product_classes.includes(val)) {
-                      setProvForm(f => ({ ...f, product_classes: [...f.product_classes, val], product_class: '' }));
-                    }
-                  }
-                }}
-              />
-              <p class="text-xs text-muted mt-1">Match any of the listed product classes. Leave empty to match all.</p>
-            </div>
-            <div>
-              <label class="block text-xs text-muted mb-1.5">CPE tag conditions (optional)</label>
-              <div class="flex flex-wrap gap-1.5 mb-1.5">
-                <For each={provForm().tag ? [provForm().tag] : []}>
+                <For each={provForm().tags}>
                   {(tag) => (
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 text-xs">
-                      hasTag('{tag}')
-                      <button type="button" class="hover:text-amber-100" onClick={() => setProvForm(f => ({ ...f, tag: '' }))} aria-label={`Remove tag ${tag}`}>
+                      {tag}
+                      <button type="button" class="hover:text-amber-100" onClick={() => setProvForm(f => ({ ...f, tags: f.tags.filter(x => x !== tag) }))} aria-label={`Remove tag ${tag}`}>
                         <X size={10} />
                       </button>
                     </span>
@@ -574,28 +678,27 @@ const Provisioning: Component = () => {
                 </For>
               </div>
               <input
-                id="provisioning-tag"
+                id="provisioning-tags"
                 type="text"
                 class="input w-full"
                 placeholder="branch-a (press Enter to add)"
-                value={provForm().tag}
-                onInput={(e) => setProvForm(f => ({ ...f, tag: e.currentTarget.value }))}
+                value={provForm().tags.length > 0 ? '' : ''}
+                onInput={(e) => {
+                  const val = e.currentTarget.value;
+                  setProvForm(f => ({ ...f, _tagInput: val } as any));
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
-                    const val = provForm().tag.trim().toLowerCase();
-                    if (val) {
-                      setProvForm(f => {
-                        const hasTagExpr = `hasTag('${val}')`;
-                        const existing = f.condition.trim();
-                        const newCondition = existing ? `${existing} AND ${hasTagExpr}` : hasTagExpr;
-                        return { ...f, tag: '', condition: newCondition };
-                      });
+                    const val = (e.currentTarget.value || '').trim().toLowerCase();
+                    if (val && !provForm().tags.includes(val)) {
+                      setProvForm(f => ({ ...f, tags: [...f.tags, val] }));
                     }
+                    (e.currentTarget as HTMLInputElement).value = '';
                   }
                 }}
               />
-              <p class="text-xs text-muted mt-1">Adds <code class="text-amber-400">hasTag('…')</code> to the condition. The rule applies only to CPEs carrying that tag.</p>
+              <p class="text-xs text-muted mt-1">Rule applies only to CPEs carrying at least one of these tags. Leave empty to apply to all devices in this template.</p>
             </div>
             <Show when={!isAddObjectRule()}>
               <div>
@@ -634,6 +737,38 @@ const Provisioning: Component = () => {
               <button type="button" onClick={() => setShowProvModal(false)} class="btn btn-secondary flex-1" disabled={pendingAction() !== null}>Cancel</button>
               <button type="submit" class="btn btn-primary flex-1" disabled={pendingAction() !== null}>
                 {pendingAction() ? 'Saving rule…' : editingProv() ? 'Update rule' : 'Add rule'}
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      </Show>
+      <Show when={showTemplateModal()}>
+        <Dialog
+          title={editingTemplate() ? 'Edit template' : 'Add template'}
+          onClose={() => setShowTemplateModal(false)}
+        >
+          <form onSubmit={(e) => { e.preventDefault(); editingTemplate() ? handleUpdateTemplate() : handleCreateTemplate(); }} class="space-y-4">
+            <div>
+              <label for="template-name" class="block text-xs text-muted mb-1.5">Name</label>
+              <input id="template-name" type="text" value={templateForm().name} onInput={(e) => setTemplateForm(f => ({ ...f, name: e.currentTarget.value }))} class="input w-full" placeholder="e.g. SkyDash AC1000" required />
+            </div>
+            <div>
+              <label for="template-manufacturer" class="block text-xs text-muted mb-1.5">Manufacturer (optional)</label>
+              <input id="template-manufacturer" type="text" value={templateForm().manufacturer} onInput={(e) => setTemplateForm(f => ({ ...f, manufacturer: e.currentTarget.value }))} class="input w-full" placeholder="Leave empty to match all manufacturers" />
+            </div>
+            <div>
+              <label for="template-product-class" class="block text-xs text-muted mb-1.5">Product class (optional)</label>
+              <input id="template-product-class" type="text" value={templateForm().product_class} onInput={(e) => setTemplateForm(f => ({ ...f, product_class: e.currentTarget.value }))} class="input w-full" placeholder="Leave empty to match all product classes" />
+            </div>
+            <div>
+              <label for="template-description" class="block text-xs text-muted mb-1.5">Description (optional)</label>
+              <input id="template-description" type="text" value={templateForm().description} onInput={(e) => setTemplateForm(f => ({ ...f, description: e.currentTarget.value }))} class="input w-full" placeholder="e.g. Rules for SkyDash AC1000 devices" />
+            </div>
+            <p class="text-xs text-muted">Specificity: both fields set = most specific (score 2), one field = partial (score 1), neither = global fallback (score 0). The most specific matching template wins.</p>
+            <div class="flex gap-2 pt-2">
+              <button type="button" onClick={() => setShowTemplateModal(false)} class="btn btn-secondary flex-1" disabled={pendingAction() !== null}>Cancel</button>
+              <button type="submit" class="btn btn-primary flex-1" disabled={pendingAction() !== null}>
+                {pendingAction() ? 'Saving…' : editingTemplate() ? 'Update template' : 'Add template'}
               </button>
             </div>
           </form>

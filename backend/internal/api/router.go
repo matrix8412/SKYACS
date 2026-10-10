@@ -176,6 +176,10 @@ func (r *Router) Handler() http.Handler {
 	apiMux.HandleFunc("DELETE /provisioning/{id}", auth.RequirePermission(models.PermProvisioningWrite)(r.handleDeleteProvisioningRule))
 	apiMux.HandleFunc("POST /provisioning/{id}/toggle", auth.RequirePermission(models.PermProvisioningWrite)(r.handleToggleProvisioningRule))
 	apiMux.HandleFunc("POST /provisioning/reorder", auth.RequirePermission(models.PermProvisioningWrite)(r.handleReorderProvisioningRules))
+	apiMux.HandleFunc("GET /provisioning/templates", auth.RequirePermission(models.PermProvisioningRead)(r.handleListProvisioningTemplates))
+	apiMux.HandleFunc("POST /provisioning/templates", auth.RequirePermission(models.PermProvisioningWrite)(r.handleCreateProvisioningTemplate))
+	apiMux.HandleFunc("PUT /provisioning/templates/{id}", auth.RequirePermission(models.PermProvisioningWrite)(r.handleUpdateProvisioningTemplate))
+	apiMux.HandleFunc("DELETE /provisioning/templates/{id}", auth.RequirePermission(models.PermProvisioningWrite)(r.handleDeleteProvisioningTemplate))
 
 	// Metric endpoints
 	apiMux.HandleFunc("GET /metrics/definitions", auth.RequirePermission(models.PermMetricsRead)(r.handleListMetricDefinitions))
@@ -2413,7 +2417,18 @@ func isValidPermission(perm string) bool {
 }
 
 func (r *Router) handleListProvisioningRules(w http.ResponseWriter, req *http.Request) {
-	rules, err := r.provisioningRepo.List(req.Context())
+	var rules []*models.ProvisioningRule
+	var err error
+	if templateIDStr := req.URL.Query().Get("template_id"); templateIDStr != "" {
+		templateID, parseErr := strconv.ParseInt(templateIDStr, 10, 64)
+		if parseErr != nil {
+			respondError(w, http.StatusBadRequest, "Invalid template_id")
+			return
+		}
+		rules, err = r.provisioningRepo.ListForTemplate(req.Context(), templateID)
+	} else {
+		rules, err = r.provisioningRepo.List(req.Context())
+	}
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to list provisioning rules")
 		return
@@ -2472,9 +2487,9 @@ func validatePrevReferenceInList(rules []*models.ProvisioningRule, ruleID int64,
 	return nil
 }
 
-// validatePrevReference loads all rules and delegates to validatePrevReferenceInList.
-func (r *Router) validatePrevReference(ctx context.Context, ruleID int64, order int, parameterName, parameterValue, addObjectPath string) error {
-	rules, err := r.provisioningRepo.List(ctx)
+// validatePrevReference loads all rules for the template and delegates to validatePrevReferenceInList.
+func (r *Router) validatePrevReference(ctx context.Context, templateID, ruleID int64, order int, parameterName, parameterValue, addObjectPath string) error {
+	rules, err := r.provisioningRepo.ListForTemplate(ctx, templateID)
 	if err != nil {
 		return fmt.Errorf("validate {prev} reference: %w", err)
 	}
@@ -2496,7 +2511,15 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		return
 	}
 
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.ProductClasses, body.Tag, body.Description); err != nil {
+	if body.TemplateID == 0 {
+		respondError(w, http.StatusBadRequest, "template_id is required")
+		return
+	}
+	if _, err := r.provisioningRepo.GetTemplate(req.Context(), body.TemplateID); err != nil {
+		respondError(w, http.StatusBadRequest, "Template not found")
+		return
+	}
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Tags, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2513,7 +2536,7 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		body.ParameterValue = ""
 		body.ParameterType = "string"
 	}
-	if err := r.validatePrevReference(req.Context(), 0, body.Order, body.ParameterName, body.ParameterValue, body.AddObjectPath); err != nil {
+	if err := r.validatePrevReference(req.Context(), body.TemplateID, 0, body.Order, body.ParameterName, body.ParameterValue, body.AddObjectPath); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2525,21 +2548,19 @@ func (r *Router) handleCreateProvisioningRule(w http.ResponseWriter, req *http.R
 		body.Phase = "bootstrap"
 	}
 
-	maxOrder, err := r.provisioningRepo.MaxOrder(req.Context(), body.Phase)
+	maxOrder, err := r.provisioningRepo.MaxOrder(req.Context(), body.TemplateID, body.Phase)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to determine next order")
 		return
 	}
 
 	rule := &models.ProvisioningRule{
+		TemplateID:     body.TemplateID,
 		ParameterName:  body.ParameterName,
 		ParameterValue: body.ParameterValue,
 		ParameterType:  body.ParameterType,
 		Phase:          body.Phase,
-		Manufacturer:   strings.TrimSpace(body.Manufacturer),
-		ProductClass:   strings.TrimSpace(body.ProductClass),
-		ProductClasses: normalizeProductClasses(body.ProductClasses),
-		Tag:            strings.ToLower(strings.TrimSpace(body.Tag)),
+		Tags:           normalizeTags(body.Tags),
 		Enabled:        body.Enabled,
 		Description:    body.Description,
 		AddObjectPath:  strings.TrimSpace(body.AddObjectPath),
@@ -2576,7 +2597,15 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Manufacturer, body.ProductClass, body.ProductClasses, body.Tag, body.Description); err != nil {
+	if body.TemplateID == 0 {
+		respondError(w, http.StatusBadRequest, "template_id is required")
+		return
+	}
+	if _, err := r.provisioningRepo.GetTemplate(req.Context(), body.TemplateID); err != nil {
+		respondError(w, http.StatusBadRequest, "Template not found")
+		return
+	}
+	if err := validateProvisioningRule(body.ParameterName, body.ParameterValue, body.ParameterType, body.AddObjectPath, body.Phase, body.Tags, body.Description); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -2593,15 +2622,14 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 		body.ParameterValue = ""
 		body.ParameterType = "string"
 	}
-	if err := r.validatePrevReference(req.Context(), id, body.Order, body.ParameterName, body.ParameterValue, body.AddObjectPath); err != nil {
+	if err := r.validatePrevReference(req.Context(), body.TemplateID, id, body.Order, body.ParameterName, body.ParameterValue, body.AddObjectPath); err != nil {
 		respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	body.ID = id
-	body.Tag = strings.ToLower(strings.TrimSpace(body.Tag))
 	body.Condition = strings.TrimSpace(body.Condition)
-	body.ProductClasses = normalizeProductClasses(body.ProductClasses)
+	body.Tags = normalizeTags(body.Tags)
 	if err := r.provisioningRepo.Update(req.Context(), &body); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to update rule")
 		return
@@ -2610,7 +2638,7 @@ func (r *Router) handleUpdateProvisioningRule(w http.ResponseWriter, req *http.R
 	respondJSON(w, http.StatusOK, body)
 }
 
-func validateProvisioningRule(name, value, valueType, addObjectPath, phase, manufacturer, productClass string, productClasses []string, tag, description string) error {
+func validateProvisioningRule(name, value, valueType, addObjectPath, phase string, tags []string, description string) error {
 	if strings.TrimSpace(addObjectPath) == "" {
 		if err := validateParameterNames([]string{name}); err != nil {
 			return err
@@ -2629,15 +2657,12 @@ func validateProvisioningRule(name, value, valueType, addObjectPath, phase, manu
 	default:
 		return errors.New("unsupported provisioning phase (must be 'bootstrap' or 'default')")
 	}
-	if len(manufacturer) > 128 || len(productClass) > 128 || len(tag) > 128 {
-		return errors.New("provisioning scope exceeds 128 characters")
+	if len(tags) > 32 {
+		return errors.New("a rule can target at most 32 tags")
 	}
-	if len(productClasses) > 32 {
-		return errors.New("a rule can target at most 32 product classes")
-	}
-	for _, pc := range productClasses {
-		if len(pc) > 128 {
-			return errors.New("product class entry exceeds 128 characters")
+	for _, tag := range tags {
+		if len(tag) > 128 {
+			return errors.New("tag entry exceeds 128 characters")
 		}
 	}
 	if len(description) > 2048 || strings.ContainsRune(description, '\x00') {
@@ -2719,7 +2744,8 @@ func (r *Router) handleReorderProvisioningRules(w http.ResponseWriter, req *http
 	}
 
 	var body struct {
-		IDs []int64 `json:"ids"`
+		TemplateID int64   `json:"template_id"`
+		IDs        []int64 `json:"ids"`
 	}
 	decoder := json.NewDecoder(req.Body)
 	decoder.DisallowUnknownFields()
@@ -2727,15 +2753,147 @@ func (r *Router) handleReorderProvisioningRules(w http.ResponseWriter, req *http
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+	if body.TemplateID == 0 {
+		respondError(w, http.StatusBadRequest, "template_id is required")
+		return
+	}
 	if len(body.IDs) == 0 {
 		respondError(w, http.StatusBadRequest, "IDs list is required")
 		return
 	}
 
-	if err := r.provisioningRepo.Reorder(req.Context(), body.IDs); err != nil {
+	if err := r.provisioningRepo.Reorder(req.Context(), body.TemplateID, body.IDs); err != nil {
 		respondError(w, http.StatusInternalServerError, "Failed to reorder rules")
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]string{"status": "reordered"})
+}
+
+// ── Provisioning Template Handlers ───────────────────────────────────────────
+
+func (r *Router) handleListProvisioningTemplates(w http.ResponseWriter, req *http.Request) {
+	templates, err := r.provisioningRepo.ListTemplates(req.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to list provisioning templates")
+		return
+	}
+	respondJSON(w, http.StatusOK, templates)
+}
+
+func (r *Router) handleCreateProvisioningTemplate(w http.ResponseWriter, req *http.Request) {
+	claims := auth.GetUserFromContext(req.Context())
+	if claims == nil || claims.Role != models.RoleFull {
+		respondError(w, http.StatusForbidden, "Full access required")
+		return
+	}
+
+	var body models.CreateProvisioningTemplateRequest
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		respondError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(body.Name) > 256 {
+		respondError(w, http.StatusBadRequest, "name exceeds 256 characters")
+		return
+	}
+	if len(body.Manufacturer) > 128 {
+		respondError(w, http.StatusBadRequest, "manufacturer exceeds 128 characters")
+		return
+	}
+	if len(body.ProductClass) > 128 {
+		respondError(w, http.StatusBadRequest, "product_class exceeds 128 characters")
+		return
+	}
+
+	template := &models.ProvisioningTemplate{
+		Name:         strings.TrimSpace(body.Name),
+		Manufacturer: strings.ToLower(strings.TrimSpace(body.Manufacturer)),
+		ProductClass: strings.ToLower(strings.TrimSpace(body.ProductClass)),
+		Description:  strings.TrimSpace(body.Description),
+	}
+	if err := r.provisioningRepo.CreateTemplate(req.Context(), template); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to create template")
+		return
+	}
+	respondJSON(w, http.StatusCreated, template)
+}
+
+func (r *Router) handleUpdateProvisioningTemplate(w http.ResponseWriter, req *http.Request) {
+	claims := auth.GetUserFromContext(req.Context())
+	if claims == nil || claims.Role != models.RoleFull {
+		respondError(w, http.StatusForbidden, "Full access required")
+		return
+	}
+
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid template ID")
+		return
+	}
+
+	var body models.CreateProvisioningTemplateRequest
+	decoder := json.NewDecoder(req.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" {
+		respondError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(body.Name) > 256 {
+		respondError(w, http.StatusBadRequest, "name exceeds 256 characters")
+		return
+	}
+	if len(body.Manufacturer) > 128 {
+		respondError(w, http.StatusBadRequest, "manufacturer exceeds 128 characters")
+		return
+	}
+	if len(body.ProductClass) > 128 {
+		respondError(w, http.StatusBadRequest, "product_class exceeds 128 characters")
+		return
+	}
+
+	template := &models.ProvisioningTemplate{
+		ID:           id,
+		Name:         strings.TrimSpace(body.Name),
+		Manufacturer: strings.ToLower(strings.TrimSpace(body.Manufacturer)),
+		ProductClass: strings.ToLower(strings.TrimSpace(body.ProductClass)),
+		Description:  strings.TrimSpace(body.Description),
+	}
+	if err := r.provisioningRepo.UpdateTemplate(req.Context(), template); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to update template")
+		return
+	}
+	respondJSON(w, http.StatusOK, template)
+}
+
+func (r *Router) handleDeleteProvisioningTemplate(w http.ResponseWriter, req *http.Request) {
+	claims := auth.GetUserFromContext(req.Context())
+	if claims == nil || claims.Role != models.RoleFull {
+		respondError(w, http.StatusForbidden, "Full access required")
+		return
+	}
+
+	idStr := req.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid template ID")
+		return
+	}
+
+	if err := r.provisioningRepo.DeleteTemplate(req.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, "Failed to delete template")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

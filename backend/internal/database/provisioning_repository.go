@@ -20,6 +20,60 @@ func NewProvisioningRepository(db *gorm.DB) *ProvisioningRepository {
 	return &ProvisioningRepository{db: db}
 }
 
+// ── Template CRUD ────────────────────────────────────────────────────────────
+
+func (r *ProvisioningRepository) CreateTemplate(ctx context.Context, template *models.ProvisioningTemplate) error {
+	return r.db.WithContext(ctx).Create(template).Error
+}
+
+func (r *ProvisioningRepository) ListTemplates(ctx context.Context) ([]*models.ProvisioningTemplate, error) {
+	var templates []*models.ProvisioningTemplate
+	if err := r.db.WithContext(ctx).Order("id ASC").Find(&templates).Error; err != nil {
+		return nil, err
+	}
+	return templates, nil
+}
+
+func (r *ProvisioningRepository) GetTemplate(ctx context.Context, id int64) (*models.ProvisioningTemplate, error) {
+	var template models.ProvisioningTemplate
+	if err := r.db.WithContext(ctx).First(&template, id).Error; err != nil {
+		return nil, err
+	}
+	return &template, nil
+}
+
+func (r *ProvisioningRepository) UpdateTemplate(ctx context.Context, template *models.ProvisioningTemplate) error {
+	return r.db.WithContext(ctx).Model(&models.ProvisioningTemplate{}).Where("id = ?", template.ID).Updates(map[string]interface{}{
+		"name": template.Name, "manufacturer": template.Manufacturer, "product_class": template.ProductClass, "description": template.Description,
+	}).Error
+}
+
+func (r *ProvisioningRepository) DeleteTemplate(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("template_id = ?", id).Delete(&models.ProvisioningRule{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.ProvisioningTemplate{}, id).Error
+	})
+}
+
+// ResolveTemplateForDevice returns the most specific template matching the
+// device's (manufacturer, product_class). Specificity: 2 > 1 > 0. Ties broken by lower ID.
+func (r *ProvisioningRepository) ResolveTemplateForDevice(ctx context.Context, manufacturer, productClass string) (*models.ProvisioningTemplate, error) {
+	var template models.ProvisioningTemplate
+	err := r.db.WithContext(ctx).
+		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
+		Where("(product_class = '' OR LOWER(product_class) = LOWER(?))", productClass).
+		Order("CASE WHEN manufacturer <> '' AND product_class <> '' THEN 2 WHEN manufacturer <> '' OR product_class <> '' THEN 1 ELSE 0 END DESC, id ASC").
+		First(&template).Error
+	if err != nil {
+		return nil, err
+	}
+	return &template, nil
+}
+
+// ── Rule CRUD ────────────────────────────────────────────────────────────────
+
 func (r *ProvisioningRepository) Create(ctx context.Context, rule *models.ProvisioningRule) error {
 	stored := *rule
 	if IsSensitiveParameterName(stored.ParameterName) {
@@ -46,34 +100,66 @@ func (r *ProvisioningRepository) List(ctx context.Context) ([]*models.Provisioni
 	return rules, decryptProvisioningRules(rules)
 }
 
-func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, deviceID int64, manufacturer, productClass, phase string) ([]*models.ProvisioningRule, error) {
+func (r *ProvisioningRepository) ListForTemplate(ctx context.Context, templateID int64) ([]*models.ProvisioningRule, error) {
 	var rules []*models.ProvisioningRule
-	if err := r.db.WithContext(ctx).
-		Where("enabled = ?", true).
-		Where("phase = ?", phase).
-		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
-		Where("(product_classes IS NULL OR jsonb_array_length(product_classes) = 0 OR product_classes @> to_jsonb(LOWER(?)))", productClass).
-		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
-		Where("NOT EXISTS (SELECT 1 FROM provisioning_applications pa WHERE pa.rule_id = provisioning_rules.id AND pa.rule_version = provisioning_rules.version AND pa.device_id = ?)", deviceID).
-		Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("template_id = ?", templateID).Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, decryptProvisioningRules(rules)
 }
 
-// ListForDevice returns all enabled rules matching the device without
-// filtering by provisioning_applications. Use this when the CPE explicitly
-// signals a factory-state event (e.g. 0 BOOTSTRAP) and must be re-provisioned
-// regardless of prior application records.
-func (r *ProvisioningRepository) ListForDevice(ctx context.Context, deviceID int64, manufacturer, productClass, phase string) ([]*models.ProvisioningRule, error) {
+// tagInclusionSQL checks whether the rule's tags are satisfied by the device's tags.
+// Empty/NULL rule tags → always true.
+const tagInclusionSQL = `(r.tags IS NULL OR jsonb_array_length(r.tags) = 0 OR (
+	d.tags IS NOT NULL AND EXISTS (
+		SELECT 1 FROM jsonb_array_elements_text(r.tags) AS rt(tag)
+		WHERE d.tags @> to_jsonb(rt.tag)
+	)
+))`
+
+// ListPendingForDevice returns enabled rules for the device's resolved template
+// that have not yet been applied at the current version.
+func (r *ProvisioningRepository) ListPendingForDevice(ctx context.Context, deviceID int64, manufacturer, productClass, phase string) ([]*models.ProvisioningRule, error) {
+	template, err := r.ResolveTemplateForDevice(ctx, manufacturer, productClass)
+	if err != nil {
+		return nil, err
+	}
 	var rules []*models.ProvisioningRule
-	if err := r.db.WithContext(ctx).
-		Where("enabled = ?", true).
-		Where("phase = ?", phase).
-		Where("(manufacturer = '' OR LOWER(manufacturer) = LOWER(?))", manufacturer).
-		Where("(product_classes IS NULL OR jsonb_array_length(product_classes) = 0 OR product_classes @> to_jsonb(LOWER(?)))", productClass).
-		Where("(tag = '' OR EXISTS (SELECT 1 FROM devices d WHERE d.id = ? AND d.tags IS NOT NULL AND d.tags @> to_jsonb(provisioning_rules.tag::text)))", deviceID).
-		Order("\"order\" ASC, id ASC").Find(&rules).Error; err != nil {
+	query := `
+		SELECT r.* FROM provisioning_rules r
+		JOIN devices d ON d.id = ?
+		WHERE r.template_id = ?
+		  AND r.enabled = true
+		  AND r.phase = ?
+		  AND ` + tagInclusionSQL + `
+		  AND NOT EXISTS (
+			SELECT 1 FROM provisioning_applications pa
+			WHERE pa.rule_id = r.id AND pa.rule_version = r.version AND pa.device_id = ?
+		  )
+		ORDER BY r."order" ASC, r.id ASC`
+	if err := r.db.WithContext(ctx).Raw(query, deviceID, template.ID, phase, deviceID).Scan(&rules).Error; err != nil {
+		return nil, err
+	}
+	return rules, decryptProvisioningRules(rules)
+}
+
+// ListForDevice returns all enabled rules for the device's resolved template
+// without filtering by provisioning_applications. Used on BOOTSTRAP events.
+func (r *ProvisioningRepository) ListForDevice(ctx context.Context, deviceID int64, manufacturer, productClass, phase string) ([]*models.ProvisioningRule, error) {
+	template, err := r.ResolveTemplateForDevice(ctx, manufacturer, productClass)
+	if err != nil {
+		return nil, err
+	}
+	var rules []*models.ProvisioningRule
+	query := `
+		SELECT r.* FROM provisioning_rules r
+		JOIN devices d ON d.id = ?
+		WHERE r.template_id = ?
+		  AND r.enabled = true
+		  AND r.phase = ?
+		  AND ` + tagInclusionSQL + `
+		ORDER BY r."order" ASC, r.id ASC`
+	if err := r.db.WithContext(ctx).Raw(query, deviceID, template.ID, phase).Scan(&rules).Error; err != nil {
 		return nil, err
 	}
 	return rules, decryptProvisioningRules(rules)
@@ -100,29 +186,29 @@ func (r *ProvisioningRepository) Update(ctx context.Context, rule *models.Provis
 			return fmt.Errorf("encrypt provisioning value: %w", err)
 		}
 	}
-	var productClassesJSON interface{}
-	if rule.ProductClasses != nil {
-		b, err := json.Marshal(rule.ProductClasses)
+	var tagsJSON interface{}
+	if rule.Tags != nil {
+		b, err := json.Marshal(rule.Tags)
 		if err != nil {
-			return fmt.Errorf("marshal product_classes: %w", err)
+			return fmt.Errorf("marshal tags: %w", err)
 		}
-		productClassesJSON = string(b)
+		tagsJSON = string(b)
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return tx.Model(&models.ProvisioningRule{}).Where("id = ?", rule.ID).Updates(map[string]interface{}{
-			"parameter_name": rule.ParameterName, "parameter_value": value, "parameter_type": rule.ParameterType,
-			"phase": rule.Phase, "manufacturer": rule.Manufacturer, "product_class": rule.ProductClass, "product_classes": productClassesJSON, "tag": rule.Tag, "enabled": rule.Enabled, "description": rule.Description,
+			"template_id": rule.TemplateID, "parameter_name": rule.ParameterName, "parameter_value": value, "parameter_type": rule.ParameterType,
+			"phase": rule.Phase, "tags": tagsJSON, "enabled": rule.Enabled, "description": rule.Description,
 			"add_object_path": rule.AddObjectPath, "order": rule.Order, "condition": rule.Condition,
 			"version": gorm.Expr("version + 1"),
 		}).Error
 	})
 }
 
-// MaxOrder returns the highest order value for the given phase, or 0 if no rules exist.
-func (r *ProvisioningRepository) MaxOrder(ctx context.Context, phase string) (int, error) {
+// MaxOrder returns the highest order value for the given template and phase, or 0 if no rules exist.
+func (r *ProvisioningRepository) MaxOrder(ctx context.Context, templateID int64, phase string) (int, error) {
 	var max int
 	if err := r.db.WithContext(ctx).Model(&models.ProvisioningRule{}).
-		Where("phase = ?", phase).
+		Where("template_id = ? AND phase = ?", templateID, phase).
 		Select("COALESCE(MAX(\"order\"), 0)").
 		Scan(&max).Error; err != nil {
 		return 0, err
@@ -130,10 +216,10 @@ func (r *ProvisioningRepository) MaxOrder(ctx context.Context, phase string) (in
 	return max, nil
 }
 
-func (r *ProvisioningRepository) Reorder(ctx context.Context, orderedIDs []int64) error {
+func (r *ProvisioningRepository) Reorder(ctx context.Context, templateID int64, orderedIDs []int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for i, id := range orderedIDs {
-			if err := tx.Model(&models.ProvisioningRule{}).Where("id = ?", id).Update("order", i).Error; err != nil {
+			if err := tx.Model(&models.ProvisioningRule{}).Where("id = ? AND template_id = ?", id, templateID).Update("order", i).Error; err != nil {
 				return err
 			}
 		}

@@ -28,7 +28,7 @@ func openTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("connect to test database: %v", err)
 	}
-	if err := db.AutoMigrate(&models.Device{}, &models.ProvisioningRule{}, &models.ProvisioningApplication{}); err != nil {
+	if err := db.AutoMigrate(&models.Device{}, &models.ProvisioningTemplate{}, &models.ProvisioningRule{}, &models.ProvisioningApplication{}); err != nil {
 		t.Fatalf("auto-migrate test schema: %v", err)
 	}
 	return db
@@ -49,9 +49,14 @@ func TestListPendingForDeviceTagFilter(t *testing.T) {
 		t.Fatalf("create device: %v", err)
 	}
 
-	matching := &models.ProvisioningRule{ParameterName: "Device.WiFi.SSID.1.SSID", ParameterValue: "match", ParameterType: "string", Phase: "bootstrap", Tag: "branch-a", Enabled: true}
-	nonMatching := &models.ProvisioningRule{ParameterName: "Device.WiFi.SSID.2.SSID", ParameterValue: "nope", ParameterType: "string", Phase: "bootstrap", Tag: "other", Enabled: true}
-	unscoped := &models.ProvisioningRule{ParameterName: "Device.WiFi.SSID.3.SSID", ParameterValue: "all", ParameterType: "string", Phase: "bootstrap", Tag: "", Enabled: true}
+	template := &models.ProvisioningTemplate{Name: "test-tag-template", Manufacturer: "", ProductClass: ""}
+	if err := db.Create(template).Error; err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+
+	matching := &models.ProvisioningRule{TemplateID: template.ID, ParameterName: "Device.WiFi.SSID.1.SSID", ParameterValue: "match", ParameterType: "string", Phase: "bootstrap", Tags: []string{"branch-a"}, Enabled: true}
+	nonMatching := &models.ProvisioningRule{TemplateID: template.ID, ParameterName: "Device.WiFi.SSID.2.SSID", ParameterValue: "nope", ParameterType: "string", Phase: "bootstrap", Tags: []string{"other"}, Enabled: true}
+	unscoped := &models.ProvisioningRule{TemplateID: template.ID, ParameterName: "Device.WiFi.SSID.3.SSID", ParameterValue: "all", ParameterType: "string", Phase: "bootstrap", Enabled: true}
 	for _, rule := range []*models.ProvisioningRule{matching, nonMatching, unscoped} {
 		if err := provRepo.Create(ctx, rule); err != nil {
 			t.Fatalf("create rule: %v", err)
@@ -61,6 +66,7 @@ func TestListPendingForDeviceTagFilter(t *testing.T) {
 		_ = db.Where("device_id = ?", device.ID).Delete(&models.ProvisioningApplication{})
 		_ = db.Delete(&models.ProvisioningRule{}, []int64{matching.ID, nonMatching.ID, unscoped.ID})
 		_ = db.Delete(&models.Device{}, device.ID)
+		_ = db.Delete(&models.ProvisioningTemplate{}, template.ID)
 	})
 
 	assertPending := func(deviceID int64, want map[string]bool) {
@@ -103,28 +109,28 @@ func TestListPendingForDeviceTagFilter(t *testing.T) {
 	})
 }
 
-// TestUpdateProductClasses verifies that the Update method correctly serializes
-// the ProductClasses []string field to jsonb when using a map-based GORM update.
-func TestUpdateProductClasses(t *testing.T) {
+// TestUpdateTags verifies that the Update method correctly serializes
+// the Tags []string field to jsonb when using a map-based GORM update.
+func TestUpdateTags(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
 
 	provRepo := NewProvisioningRepository(db)
 
-	serial := fmt.Sprintf("test-pc-%d", time.Now().UnixNano())
-	device := &models.Device{SerialNumber: serial, OUI: "00:00:02"}
-	if err := db.Create(device).Error; err != nil {
-		t.Fatalf("create device: %v", err)
+	template := &models.ProvisioningTemplate{Name: fmt.Sprintf("test-tags-%d", time.Now().UnixNano())}
+	if err := db.Create(template).Error; err != nil {
+		t.Fatalf("create template: %v", err)
 	}
 
-	// Create a rule with initial product classes.
-	initial := []string{"class-a", "class-b"}
+	// Create a rule with initial tags.
+	initial := []string{"tag-a", "tag-b"}
 	rule := &models.ProvisioningRule{
-		ParameterName:  "Test.Update.PC",
+		TemplateID:     template.ID,
+		ParameterName:  "Test.Update.Tags",
 		ParameterValue: "initial",
 		ParameterType:  "string",
 		Phase:          "bootstrap",
-		ProductClasses: initial,
+		Tags:           initial,
 		Enabled:        true,
 		Order:          0,
 	}
@@ -133,7 +139,7 @@ func TestUpdateProductClasses(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		_ = db.Delete(&models.ProvisioningRule{}, rule.ID)
-		_ = db.Delete(&models.Device{}, device.ID)
+		_ = db.Delete(&models.ProvisioningTemplate{}, template.ID)
 	})
 
 	// Verify initial state.
@@ -141,14 +147,14 @@ func TestUpdateProductClasses(t *testing.T) {
 	if err := db.First(&loaded, rule.ID).Error; err != nil {
 		t.Fatalf("load rule: %v", err)
 	}
-	if len(loaded.ProductClasses) != 2 || loaded.ProductClasses[0] != "class-a" || loaded.ProductClasses[1] != "class-b" {
-		t.Fatalf("initial ProductClasses = %v, want %v", loaded.ProductClasses, initial)
+	if len(loaded.Tags) != 2 || loaded.Tags[0] != "tag-a" || loaded.Tags[1] != "tag-b" {
+		t.Fatalf("initial Tags = %v, want %v", loaded.Tags, initial)
 	}
 
-	// Update with new product classes.
-	updated := []string{"class-c", "class-d", "class-e"}
+	// Update with new tags.
+	updated := []string{"tag-c", "tag-d", "tag-e"}
 	rule.ParameterValue = "updated"
-	rule.ProductClasses = updated
+	rule.Tags = updated
 	if err := provRepo.Update(ctx, rule); err != nil {
 		t.Fatalf("update rule: %v", err)
 	}
@@ -157,28 +163,28 @@ func TestUpdateProductClasses(t *testing.T) {
 	if err := db.First(&loaded, rule.ID).Error; err != nil {
 		t.Fatalf("reload rule: %v", err)
 	}
-	if len(loaded.ProductClasses) != 3 {
-		t.Fatalf("updated ProductClasses len = %d, want 3 (got %v)", len(loaded.ProductClasses), loaded.ProductClasses)
+	if len(loaded.Tags) != 3 {
+		t.Fatalf("updated Tags len = %d, want 3 (got %v)", len(loaded.Tags), loaded.Tags)
 	}
 	for i, want := range updated {
-		if loaded.ProductClasses[i] != want {
-			t.Errorf("ProductClasses[%d] = %q, want %q", i, loaded.ProductClasses[i], want)
+		if loaded.Tags[i] != want {
+			t.Errorf("Tags[%d] = %q, want %q", i, loaded.Tags[i], want)
 		}
 	}
 	if loaded.ParameterValue != "updated" {
 		t.Errorf("ParameterValue = %q, want %q", loaded.ParameterValue, "updated")
 	}
 
-	// Update to nil (clear product classes).
-	rule.ProductClasses = nil
+	// Update to nil (clear tags).
+	rule.Tags = nil
 	if err := provRepo.Update(ctx, rule); err != nil {
 		t.Fatalf("update rule to nil: %v", err)
 	}
 	if err := db.First(&loaded, rule.ID).Error; err != nil {
 		t.Fatalf("reload rule after nil: %v", err)
 	}
-	if loaded.ProductClasses != nil {
-		t.Errorf("ProductClasses after nil update = %v, want nil", loaded.ProductClasses)
+	if loaded.Tags != nil {
+		t.Errorf("Tags after nil update = %v, want nil", loaded.Tags)
 	}
 }
 
@@ -190,11 +196,19 @@ func TestMaxOrder(t *testing.T) {
 
 	provRepo := NewProvisioningRepository(db)
 
+	template := &models.ProvisioningTemplate{Name: fmt.Sprintf("test-max-order-%d", time.Now().UnixNano())}
+	if err := db.Create(template).Error; err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Delete(&models.ProvisioningTemplate{}, template.ID)
+	})
+
 	// Use a unique phase to avoid interference with other tests.
 	phase := fmt.Sprintf("test-max-order-%d", time.Now().UnixNano())
 
 	// No rules yet: MaxOrder should return 0.
-	max, err := provRepo.MaxOrder(ctx, phase)
+	max, err := provRepo.MaxOrder(ctx, template.ID, phase)
 	if err != nil {
 		t.Fatalf("MaxOrder (empty): %v", err)
 	}
@@ -206,6 +220,7 @@ func TestMaxOrder(t *testing.T) {
 	ids := make([]int64, 3)
 	for i := 0; i < 3; i++ {
 		rule := &models.ProvisioningRule{
+			TemplateID:     template.ID,
 			ParameterName:  fmt.Sprintf("Test.Param.%d", i),
 			ParameterValue: "val",
 			ParameterType:  "string",
@@ -222,7 +237,7 @@ func TestMaxOrder(t *testing.T) {
 		_ = db.Delete(&models.ProvisioningRule{}, ids)
 	})
 
-	max, err = provRepo.MaxOrder(ctx, phase)
+	max, err = provRepo.MaxOrder(ctx, template.ID, phase)
 	if err != nil {
 		t.Fatalf("MaxOrder: %v", err)
 	}
@@ -232,7 +247,7 @@ func TestMaxOrder(t *testing.T) {
 
 	// A different phase should still return 0.
 	otherPhase := phase + "-other"
-	max, err = provRepo.MaxOrder(ctx, otherPhase)
+	max, err = provRepo.MaxOrder(ctx, template.ID, otherPhase)
 	if err != nil {
 		t.Fatalf("MaxOrder (other phase): %v", err)
 	}

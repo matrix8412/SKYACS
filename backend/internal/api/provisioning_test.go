@@ -31,27 +31,27 @@ func TestNormalizeTags(t *testing.T) {
 }
 
 func TestValidateProvisioningRuleTag(t *testing.T) {
-	base := func(tag string) error {
-		return validateProvisioningRule("InternetGatewayDevice.ManagementServer.URL", "http://acs.example.com", "string", "", "bootstrap", "", "", nil, tag, "")
+	base := func(tags []string) error {
+		return validateProvisioningRule("InternetGatewayDevice.ManagementServer.URL", "http://acs.example.com", "string", "", "bootstrap", tags, "")
 	}
 
-	if err := base(""); err != nil {
-		t.Fatalf("empty tag should be valid (applies to all devices), got %v", err)
+	if err := base(nil); err != nil {
+		t.Fatalf("nil tags should be valid (applies to all devices), got %v", err)
 	}
-	if err := base("branch-a"); err != nil {
+	if err := base([]string{"branch-a"}); err != nil {
 		t.Fatalf("valid tag was rejected: %v", err)
 	}
-	if err := base(string(make([]byte, 129))); err == nil {
+	if err := base([]string{string(make([]byte, 129))}); err == nil {
 		t.Fatal("tag over 128 characters should be rejected")
 	}
 }
 
 func TestValidateProvisioningRuleAddObjectDoesNotRequireParameter(t *testing.T) {
 	path := "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection"
-	if err := validateProvisioningRule("", "", "", path, "bootstrap", "", "", nil, "", ""); err != nil {
+	if err := validateProvisioningRule("", "", "", path, "bootstrap", nil, ""); err != nil {
 		t.Fatalf("AddObject without SetParameterValues fields was rejected: %v", err)
 	}
-	if err := validateProvisioningRule("", "", "string", "", "bootstrap", "", "", nil, "", ""); err == nil {
+	if err := validateProvisioningRule("", "", "string", "", "bootstrap", nil, ""); err == nil {
 		t.Fatal("parameter rule without a name was accepted")
 	}
 }

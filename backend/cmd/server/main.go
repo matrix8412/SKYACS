@@ -325,6 +325,7 @@ func runAutoMigrate(db *gorm.DB) error {
 		&models.Role{},
 		&models.Fault{},
 		&models.Firmware{},
+		&models.ProvisioningTemplate{},
 		&models.ProvisioningRule{},
 		&models.ProvisioningApplication{},
 		&models.AuditLog{},
@@ -359,6 +360,9 @@ func runAutoMigrate(db *gorm.DB) error {
 	}
 	if err := db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_command_key_unique ON tasks (command_key) WHERE command_key <> ''").Error; err != nil {
 		return fmt.Errorf("create unique task command key index: %w", err)
+	}
+	if err := migrateProvisioningTemplates(db); err != nil {
+		return fmt.Errorf("migrate provisioning templates: %w", err)
 	}
 	if err := database.SetupTimescaleDB(db); err != nil {
 		return fmt.Errorf("setup timescaledb: %w", err)
@@ -538,6 +542,131 @@ func runRetentionMaintenance(ctx context.Context, db *gorm.DB) {
 		case <-ticker.C:
 			cleanup()
 		}
+	}
+}
+
+func migrateProvisioningTemplates(db *gorm.DB) error {
+	var unassigned int64
+	if err := db.Model(&models.ProvisioningRule{}).Where("template_id = 0 OR template_id IS NULL").Count(&unassigned).Error; err != nil {
+		return err
+	}
+	if unassigned == 0 {
+		return nil
+	}
+
+	log.Println("Migrating provisioning rules to templates...")
+
+	type legacyRule struct {
+		ID             int64    `gorm:"column:id"`
+		Manufacturer   string   `gorm:"column:manufacturer"`
+		ProductClass   string   `gorm:"column:product_class"`
+		ProductClasses []string `gorm:"column:product_classes;type:jsonb;serializer:json"`
+		Tag            string   `gorm:"column:tag"`
+	}
+
+	var rules []legacyRule
+	if err := db.Table("provisioning_rules").Select("id, manufacturer, product_class, product_classes, tag").Find(&rules).Error; err != nil {
+		return fmt.Errorf("read legacy rules: %w", err)
+	}
+
+	type scope struct {
+		Manufacturer string
+		ProductClass string
+	}
+	scopes := make(map[scope]bool)
+	for _, rule := range rules {
+		mfr := strings.ToLower(strings.TrimSpace(rule.Manufacturer))
+		if rule.ProductClasses != nil && len(rule.ProductClasses) > 0 {
+			for _, pc := range rule.ProductClasses {
+				scopes[scope{Manufacturer: mfr, ProductClass: strings.ToLower(strings.TrimSpace(pc))}] = true
+			}
+		} else {
+			pc := strings.ToLower(strings.TrimSpace(rule.ProductClass))
+			scopes[scope{Manufacturer: mfr, ProductClass: pc}] = true
+		}
+	}
+	scopes[scope{}] = true
+
+	templateMap := make(map[scope]int64)
+	for s := range scopes {
+		name := provisioningTemplateName(s.Manufacturer, s.ProductClass)
+		var template models.ProvisioningTemplate
+		result := db.Where("manufacturer = ? AND product_class = ?", s.Manufacturer, s.ProductClass).First(&template)
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			template = models.ProvisioningTemplate{
+				Name:         name,
+				Manufacturer: s.Manufacturer,
+				ProductClass: s.ProductClass,
+			}
+			if err := db.Create(&template).Error; err != nil {
+				return fmt.Errorf("create template %s: %w", name, err)
+			}
+		} else if result.Error != nil {
+			return fmt.Errorf("find template: %w", result.Error)
+		}
+		templateMap[s] = template.ID
+	}
+
+	for _, rule := range rules {
+		mfr := strings.ToLower(strings.TrimSpace(rule.Manufacturer))
+		if rule.ProductClasses != nil && len(rule.ProductClasses) > 0 {
+			for _, pc := range rule.ProductClasses {
+				s := scope{Manufacturer: mfr, ProductClass: strings.ToLower(strings.TrimSpace(pc))}
+				templateID, ok := templateMap[s]
+				if !ok {
+					continue
+				}
+				if err := db.Exec(
+					`INSERT INTO provisioning_rules (template_id, parameter_name, parameter_value, parameter_type, phase, tags, enabled, version, description, add_object_path, "order", condition, created_at, updated_at)
+					 SELECT ?, parameter_name, parameter_value, parameter_type, phase,
+					   CASE WHEN tag <> '' THEN to_jsonb(ARRAY[LOWER(tag)]) ELSE NULL END,
+					   enabled, version, description, add_object_path, "order", condition, created_at, updated_at
+					 FROM provisioning_rules WHERE id = ?`,
+					templateID, rule.ID,
+				).Error; err != nil {
+					return fmt.Errorf("copy rule %d to template %d: %w", rule.ID, templateID, err)
+				}
+			}
+			if err := db.Exec("DELETE FROM provisioning_rules WHERE id = ?", rule.ID).Error; err != nil {
+				return fmt.Errorf("delete legacy rule %d: %w", rule.ID, err)
+			}
+		} else {
+			s := scope{Manufacturer: mfr, ProductClass: strings.ToLower(strings.TrimSpace(rule.ProductClass))}
+			templateID, ok := templateMap[s]
+			if !ok {
+				continue
+			}
+			if err := db.Exec(
+				`UPDATE provisioning_rules SET template_id = ?, tags = CASE WHEN tag <> '' THEN to_jsonb(ARRAY[LOWER(tag)]) ELSE NULL END WHERE id = ?`,
+				templateID, rule.ID,
+			).Error; err != nil {
+				return fmt.Errorf("assign rule %d to template %d: %w", rule.ID, templateID, err)
+			}
+		}
+	}
+
+	for _, col := range []string{"manufacturer", "product_class", "product_classes", "tag"} {
+		if db.Migrator().HasColumn(&models.ProvisioningRule{}, col) {
+			if err := db.Migrator().DropColumn(&models.ProvisioningRule{}, col); err != nil {
+				return fmt.Errorf("drop column %s: %w", col, err)
+			}
+		}
+	}
+
+	log.Printf("Provisioning template migration complete: %d templates", len(templateMap))
+	return nil
+}
+
+func provisioningTemplateName(manufacturer, productClass string) string {
+	switch {
+	case manufacturer != "" && productClass != "":
+		return manufacturer + " " + productClass
+	case manufacturer != "":
+		return manufacturer
+	case productClass != "":
+		return productClass
+	default:
+		return "Global"
 	}
 }
 

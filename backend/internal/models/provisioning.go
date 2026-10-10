@@ -2,24 +2,49 @@ package models
 
 import "time"
 
+type ProvisioningTemplate struct {
+	ID           int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name         string    `json:"name" gorm:"not null;size:256"`
+	Manufacturer string    `json:"manufacturer" gorm:"size:128;default:''"`
+	ProductClass string    `json:"product_class" gorm:"size:128;default:''"`
+	Description  string    `json:"description,omitempty"`
+	CreatedAt    time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+}
+
+func (ProvisioningTemplate) TableName() string {
+	return "provisioning_templates"
+}
+
+// SpecificityScore returns the template specificity: 2 = both manufacturer and
+// product_class set, 1 = only one set, 0 = global (wildcard).
+func (t *ProvisioningTemplate) SpecificityScore() int {
+	score := 0
+	if t.Manufacturer != "" {
+		score++
+	}
+	if t.ProductClass != "" {
+		score++
+	}
+	return score
+}
+
 type ProvisioningRule struct {
-	ID             int64      `json:"id" gorm:"primaryKey;autoIncrement"`
-	ParameterName  string     `json:"parameter_name" gorm:"not null"`
-	ParameterValue string     `json:"parameter_value"`
-	ParameterType  string     `json:"parameter_type" gorm:"default:'string'"`
-	Phase          string     `json:"phase" gorm:"size:16;default:'bootstrap'"`
-	Manufacturer   string     `json:"manufacturer,omitempty" gorm:"size:128"`
-	ProductClass   string     `json:"product_class,omitempty" gorm:"size:128"`
-	ProductClasses []string   `json:"product_classes,omitempty" gorm:"type:jsonb;serializer:json"`
-	Tag            string     `json:"tag,omitempty" gorm:"column:tag;size:128;not null;default:''"`
-	Enabled        bool       `json:"enabled" gorm:"default:true"`
-	Version        uint64     `json:"version" gorm:"not null;default:1"`
-	Description    string     `json:"description,omitempty"`
-	AddObjectPath  string     `json:"add_object_path,omitempty" gorm:"size:512"`
-	Order          int        `json:"order" gorm:"not null;default:0"`
-	Condition      string     `json:"condition,omitempty" gorm:"size:1024;default:''"`
-	CreatedAt      time.Time  `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt      time.Time  `json:"updated_at" gorm:"autoUpdateTime"`
+	ID             int64     `json:"id" gorm:"primaryKey;autoIncrement"`
+	TemplateID     int64     `json:"template_id" gorm:"not null;index"`
+	ParameterName  string    `json:"parameter_name" gorm:"not null"`
+	ParameterValue string    `json:"parameter_value"`
+	ParameterType  string    `json:"parameter_type" gorm:"default:'string'"`
+	Phase          string    `json:"phase" gorm:"size:16;default:'bootstrap'"`
+	Tags           []string  `json:"tags,omitempty" gorm:"type:jsonb;serializer:json"`
+	Enabled        bool      `json:"enabled" gorm:"default:true"`
+	Version        uint64    `json:"version" gorm:"not null;default:1"`
+	Description    string    `json:"description,omitempty"`
+	AddObjectPath  string    `json:"add_object_path,omitempty" gorm:"size:512"`
+	Order          int       `json:"order" gorm:"not null;default:0"`
+	Condition      string    `json:"condition,omitempty" gorm:"size:1024;default:''"`
+	CreatedAt      time.Time `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt      time.Time `json:"updated_at" gorm:"autoUpdateTime"`
 }
 
 func (ProvisioningRule) TableName() string {
@@ -27,19 +52,24 @@ func (ProvisioningRule) TableName() string {
 }
 
 type CreateProvisioningRuleRequest struct {
+	TemplateID     int64    `json:"template_id"`
 	ParameterName  string   `json:"parameter_name"`
 	ParameterValue string   `json:"parameter_value"`
 	ParameterType  string   `json:"parameter_type"`
 	Phase          string   `json:"phase"`
-	Manufacturer   string   `json:"manufacturer"`
-	ProductClass   string   `json:"product_class"`
-	ProductClasses []string `json:"product_classes"`
-	Tag            string   `json:"tag"`
+	Tags           []string `json:"tags"`
 	Enabled        bool     `json:"enabled"`
 	Description    string   `json:"description"`
 	AddObjectPath  string   `json:"add_object_path"`
 	Order          int      `json:"order"`
 	Condition      string   `json:"condition"`
+}
+
+type CreateProvisioningTemplateRequest struct {
+	Name         string `json:"name"`
+	Manufacturer string `json:"manufacturer"`
+	ProductClass string `json:"product_class"`
+	Description  string `json:"description"`
 }
 
 type ProvisioningApplication struct {
