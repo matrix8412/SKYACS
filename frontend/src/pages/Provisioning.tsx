@@ -243,18 +243,6 @@ const Provisioning: Component = () => {
     }
   };
 
-  const loadProvRules = async () => {
-    setProvError(null);
-    try {
-      const rules = await api.getProvisioningRules();
-      setProvRules(rules);
-    } catch (error) {
-      setProvError(error as Error);
-    }
-  };
-
-  const refetchProvRules = () => { loadProvRules(); };
-
   // Provisioning handlers
   const handleCreateProv = async () => {
     if (pendingAction()) return;
