@@ -31,7 +31,7 @@ func (t *ProvisioningTemplate) SpecificityScore() int {
 
 type ProvisioningRule struct {
 	ID             int64     `json:"id" gorm:"primaryKey;autoIncrement"`
-	TemplateID     int64     `json:"template_id" gorm:"not null;index"`
+	TemplateID     int64     `json:"template_id" gorm:"index"`
 	ParameterName  string    `json:"parameter_name" gorm:"not null"`
 	ParameterValue string    `json:"parameter_value"`
 	ParameterType  string    `json:"parameter_type" gorm:"default:'string'"`
